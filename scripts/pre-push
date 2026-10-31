@@ -6,6 +6,7 @@ script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 root="$(git -C "$script_dir" rev-parse --show-toplevel)"
 export TMPDIR="$root/.tmp"
 export BENNETT_CONFORMANCE_ROOT="${BENNETT_CONFORMANCE_ROOT:-$(dirname "$root")/bennett-conformance}"
+export BENNETT_ARITH_ROOT="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}"
 mkdir -p "$TMPDIR"
 shas=()
 updates=0

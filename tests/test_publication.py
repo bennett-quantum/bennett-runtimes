@@ -9,6 +9,7 @@ import subprocess
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFORMANCE = Path(os.environ.get('BENNETT_CONFORMANCE_ROOT', ROOT.parent/'bennett-conformance'))
+ARITH = Path(os.environ.get('BENNETT_ARITH_ROOT', ROOT.parent/'bennett-arith'))
 RUNG = CONFORMANCE/'ladder/rung-2'
 TMP = ROOT/'.tmp'/'publication'
 TMP.mkdir(parents=True, exist_ok=True)
@@ -40,6 +41,7 @@ for major in (18, 23):
     llvm = Path(f'/usr/lib/llvm-{major}/bin')
     dist = ROOT/f'dist/llvm{major}'
     bc = dist/'bennett-runtimes.bc'
+    arith = ARITH/f'dist/llvm{major}/bennett-arith.bc'
     manifest = json.loads((dist/'manifest.json').read_text())
     assert manifest['llvm_major'] == major
     assert manifest['sha256'] == hashlib.sha256(bc.read_bytes()).hexdigest()
@@ -66,7 +68,7 @@ for major in (18, 23):
         RUNG/'fixtures/hashtable_marked.c', '-o', fresh)
     for label, source in [('recorded', recorded), ('fresh', fresh)]:
         linked = TMP/f'{label}-{major}.bc'
-        run(llvm/'llvm-link', source, bc, '--only-needed', '-o', linked)
+        run(llvm/'llvm-link', source, bc, arith, '--only-needed', '-o', linked)
         for pipeline in ('verify', 'lto<O3>'):
             text = run(llvm/'opt', f'-passes={pipeline}', '-S', linked, '-o', '-').decode()
             undefined = nonintrinsic_undefined(text)
@@ -83,7 +85,9 @@ for major in (18, 23):
     # Keep native ABI memory entry points: codegen can form a memset libcall
     # after --only-needed would have discarded its definition.
     run(llvm/'llvm-link', original, bc, '-o', linked)
-    run(llvm/'opt', '-passes=lto<O3>', linked, '-o', optimized)
+    with_arith = TMP/f'native-arith-{major}.bc'
+    run(llvm/'llvm-link', linked, arith, '--only-needed', '-o', with_arith)
+    run(llvm/'opt', '-passes=lto<O3>', with_arith, '-o', optimized)
     run(llvm/'clang', '-target', 'x86_64-unknown-linux-gnu', '-O2', '-ffreestanding', '-fno-builtin',
         '-emit-llvm', '-c', ROOT/'src/native/heap.c', '-o', backend)
     native_ir = run(llvm/'llvm-dis', backend, '-o', '-').decode()
