@@ -18,3 +18,10 @@ build/
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+
+.tmp/
+!dist/
+!dist/llvm18/
+!dist/llvm23/
+!dist/llvm18/bennett-runtimes.bc
+!dist/llvm23/bennett-runtimes.bc

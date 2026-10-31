@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export TMPDIR="$root/.tmp"
+mkdir -p "$TMPDIR"
+exec python3 -I "$root/scripts/build.py" "$@"
