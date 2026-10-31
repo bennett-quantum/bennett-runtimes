@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+set -euo pipefail
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export TMPDIR="$root/.tmp"
+mkdir -p "$TMPDIR"
+rebuild="$(mktemp -d "$TMPDIR/reproduce-XXXXXXXX")"
+trap 'rm -rf "$rebuild"' EXIT
+for major in 18 23; do
+  "$root/scripts/build" "$major" "$rebuild/llvm$major"
+  for name in bennett-runtimes.bc manifest.json SHA256SUMS; do
+    cmp "$root/dist/llvm$major/$name" "$rebuild/llvm$major/$name"
+  done
+done
+python3 -I "$root/tests/test_runtime.py"
+python3 -I "$root/tests/test_publication.py"
+echo 'gate: LLVM 18/23 publications reproduced; runtime and corpus closure PASS'
