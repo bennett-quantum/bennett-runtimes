@@ -10,9 +10,12 @@ sysroot="$root/dist/llvm$major/musl-sysroot"
 scratch="$(mktemp -d "$TMPDIR/native-link-XXXXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
 "/usr/lib/llvm-$major/bin/llvm-link" "$input" --override="$root/dist/llvm$major/bennett-runtimes.bc" -o "$scratch/combined.bc"
+"/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl -O2 -ffreestanding -fno-builtin -emit-llvm -c "$sysroot/lib/syscall.c" -o "$scratch/syscall.bc"
+arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
+"/usr/lib/llvm-$major/bin/llvm-link" "$scratch/combined.bc" "$arith" --only-needed --override="$scratch/syscall.bc" -o "$scratch/native.bc"
 "/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl \
-  --sysroot="$sysroot" -nostdlib -nostdinc -static -O2 -no-pie \
+  --sysroot="$sysroot" -nostdlib -nostdinc -static -O2 -fno-pie \
   -ffreestanding -fno-builtin -isystem "$sysroot/include" -Wl,-e,_start \
   -Wl,--section-start=.bennett_heap=0x10000000 \
-  "$scratch/combined.bc" \
-  "$sysroot/lib/start.S" "$sysroot/lib/start.c" "$sysroot/lib/syscall.c" "$sysroot/lib/heap.c" -o "$output"
+  "$scratch/native.bc" \
+  "$sysroot/lib/start.S" "$sysroot/lib/start.bc" "$sysroot/lib/heap.c" -o "$output"

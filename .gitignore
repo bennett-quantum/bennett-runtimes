@@ -29,3 +29,5 @@ build/
 !dist/llvm18/musl-sysroot/lib/bennett-allocator.bc
 !dist/llvm23/musl-sysroot/lib/bennett-allocator.bc
 __pycache__/
+!dist/llvm18/musl-sysroot/lib/start.bc
+!dist/llvm23/musl-sysroot/lib/start.bc

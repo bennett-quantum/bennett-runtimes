@@ -1,56 +1,44 @@
-# Current state — musl sysroot pass
+# Current state — musl and console runtime publication
 
-Updated UTC: 2026-11-01T13:09:42Z (`date -u` checked).
+Updated UTC: 2026-11-01T13:19:05Z (`date -u`).
 
-brt-1ft: real musl 1.2.5 stdio/exit bitcode and complete headers now publish
-with both major runtimes. Archive SHA/provenance and build details: README.md
-and vendor/README.md. Static hello and formatted printf/atexit/flush tests use
-no host libc; original allocator regression/golden tests remain green.
-The syscall platform import is completed by brt-cgb next. Dialect reading
-b-dialect-spec-lbq was filed and exported in commit 7159683.
+brt-1ft is committed as 7c1cd4c. brt-cgb implementation is gated locally.
+Both LLVM majors publish combined bennett-runtimes.bc, a complete musl header
+sysroot and native startup bitcode/support. Musl 1.2.5 archive SHA-256:
+a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4.
+No build fetches anything. Sources remain upstream, with separate generated
+platform headers; musl never replaces this repo's zero-filling allocator.
 
-Previous rung-2 handoff follows for retained limitations:
+scripts/gate PASS: byte-identical bitcode/manifests/full sysroots; allocator
+attributes/address/zero-fill/history and seven fault vectors per major;
+recorded+fresh rung-2 link/LTO and ten golden native cases; static musl hello,
+formatted printf (including floating point), atexit, return/explicit-exit flush,
+write and putchar. Native musl tests link matching arith, no host CRT/libc/libm,
+and have no undefined symbols or dynamic imports. start.bc is native startup;
+§19.2 device launch preparation and §17.7 materialised comparison remain driver
+responsibilities. N28–N30 must use the returning __bennett_rt_exit helper and
+propagate/catch the §14.7 EH state, removing noreturn/unreachable constraints.
 
-# Current state — rung-2 runtime publication
+The console syscall bridge maps fd 1/2 writes to an undefined effect marker,
+with writev aggregate preflight and vector-order emission (§11.2). Production
+contains no marker/primitive definition. R tape stays in the ISA; the L model
+has ordinary bound buffer/capacity/length state (§11.3), distinct unbound and
+bound-zero-capacity cases. Private oracle output truncates; bounded action
+output faults before mutation. State and test history layouts are documented
+in device-models/README.md. Published-model store instrumentation checks
+byte-exact device/tape reset from nonzero preimages and deterministic replay,
+including tampered bytes. This is native-model validation, not an executor's
+whole-program state proof or full DR/DE conformance.
 
-Updated UTC: 2026-10-31T22:38:12Z (`date -u`).
+Dialect b-dialect-spec-lbq records both readings of startup, console framing,
+terminal metadata and tape ABI; exported alone in dialect commit 7159683.
+Implementation follows the explicit per-tier text. brt-zct and brt-q1k remain
+open for full runtime/libc/VFS/thread/device families. Odd-sized typed C
+allocation alignment still needs b-dialect-spec-jjr; current §16.9 byte-bump
+history is preserved. No unsupported-symbol trap stubs replace libc functions.
 
-`brt-3sa` is complete: `dist/llvm18/bennett-runtimes.bc` and
-`dist/llvm23/bennett-runtimes.bc` close the measured hashtable allocation/libc
-surface (`malloc`, `calloc`, `free`, `llvm.memset`). Native `memset` and N26's
-`__bennett_rt_memset` / `__bennett_rt_memmove` are also defined. Each distribution
-has a source/tool/export/digest manifest and SHA256SUMS. Dialect is pinned to
-0.2.10 @023f5a771a814270634db3be9cfde88ded69f975; ISA to 0.8 @f88b32f.
-
-Allocation wraps the three undefined ISA primitives (§3.1/16.9), explicitly
-zeroes allocations, checks calloc overflow before mutation, and skips null free.
-The comparison-only native backend implements exact nonreclaiming byte-bump
-history, fixed-base storage, bounds/table preflights and diagnostic traps on
-OOM/invalid/double free. It is never in the published device bitcode. See README
-for build/consume/native-link flags and limitations.
-
-Validation: `scripts/gate` PASS on both majors, also through the installed
-`scripts/pre-push` in a clean detached checkout (88058b0). Byte-identical rebuilds,
-export/allockind audits, exact recorded + fresh corpus links with arith, post-LTO
-closure, seven failure scenarios per major, and all ten independent native golden
-cases per major pass. The native corpus/backend has no unresolved allocation or
-memory shim; only host harness I/O/startup uses libc. A discovered host-memset
-leak was fixed by retaining runtime ABI definitions through native codegen;
-`--only-needed` can drop one before a later libcall is formed.
-
-Consumer gate was run once, exit **1**, with plugin c4ffcd3be30bf7ef9a354a4771aeaa237cd636ed
-and VM 151f1ba5c48ab5b510df61eeeabca3cde4192070. Evidence/table/report:
-`../bennett-conformance/.tmp/rung-2/20261031T223029.611386Z/`.
-Both majors: fixtures/builds/native reference/C frontend/runtime bitcode link/
-post-link LTO PASS; S1–S9 production FAIL (300-second timeout, bp-au6); launch,
-admission, forward comparison and byte-exact reverse stages BLOCKED by bp-au6.
-The actual consumer post-LTO IR has only qalloc/qfree and the three ISA primitives
-as non-intrinsic declarations. Full driver-materialised §17.7 comparison and
-executor/reversal success remain unverified. No consumer/plugin/VM source edited.
-
-Future scope: brt-zct tracks remaining §§11/13/14/17/20 and integer-helper contracts;
-brt-q1k tracks wider libc/allocator families. Dialect b-dialect-spec-jjr records
-odd-sized typed allocation alignment versus exact primitive history (spec export
-commit fc050a6); follow the executable §16.9 wrapper pending clarification.
-No marker/primitive definitions or unsupported-symbol trap stubs are published.
-No worklog block (orchestrator owns it), push, CI or display process was performed.
+The requested frozen rung-3 consumer run and pre-push validation follow this
+commit. Its default runtime publication is frozen at 6808622, not moving HEAD;
+its headers come from this working publication. No conformance/sibling source
+was edited. No worklog block (orchestrator owns it), push, remote sync, CI or
+display process was performed.

@@ -1,97 +1,98 @@
 # bennett-runtimes
 
-Ordinary runtime C compiled to LLVM bitcode, pinned to dialect **0.2.10**
-(`023f5a771a814270634db3be9cfde88ded69f975`). This publication covers the
-rung-2 hashtable's measured `malloc`, `calloc`, `free`, `llvm.memset` closure.
-Exports also include native `memset` and N26's `__bennett_rt_memset` /
-`__bennett_rt_memmove`. No defined symbol delegates to host libc.
+Ordinary runtime C compiled to LLVM 18 and 23 bitcode, pinned to dialect
+**0.2.10 @023f5a771a814270634db3be9cfde88ded69f975** and ISA **0.8**.
+The publication contains the zero-filling allocator, memory helpers, a real
+musl stdio/exit slice and the lifted console model. No device definition
+delegates to host libc, and no production marker or ISA primitive is defined.
+Broader runtime conformance remains in brt-zct and brt-q1k.
 
-## Build and verify
+## Build and gate
 
-Requires Python 3 and the installed `/usr/lib/llvm-{18,23}/bin` tools:
+Requires Python 3 and `/usr/lib/llvm-{18,23}/bin` tools:
 
 ```sh
 scripts/build 18
 scripts/build 23
-scripts/install-hooks.sh
 scripts/gate
+scripts/install-hooks.sh
 ```
 
-Commands work from any directory when invoked by absolute path. They unset all
-four desktop variables and use repository-local `.tmp/`. Each build publishes
-`dist/llvm<M>/{bennett-runtimes.bc,manifest.json,SHA256SUMS}`; manifests record
-bitcode/source SHA-256 digests, compiler flags, tool versions and exports.
-`scripts/build M OUTPUT_DIRECTORY` builds without replacing the publication.
+Commands work from any directory by absolute path. They unset DISPLAY,
+WAYLAND_DISPLAY, DBUS_SESSION_BUS_ADDRESS and BROWSER and use local `.tmp/`.
+Builds are offline. `scripts/build M OUTPUT_DIRECTORY` reproduces without
+replacing dist. Pre-push gates actual pushed SHAs in clean detached worktrees;
+it never pushes or fetches dependencies.
 
-The gate reproduces both publications, audits exports and allocation attributes,
-links the sibling conformance repo's recorded and fresh rung-2 IR with both
-runtime libraries, checks post-LTO
-closure, exercises allocation/fault semantics, and reproduces all ten golden
-native cases using the published bitcode. Set `BENNETT_CONFORMANCE_ROOT` to use a
-conformance checkout outside the sibling location (`BENNETT_ARITH_ROOT` similarly
-selects arith). Pre-push gates pushed commits
-in clean detached worktrees; it never pushes.
+Each `dist/llvm<M>/` contains:
+
+- `bennett-runtimes.bc`: combined allocator, memory helpers, selected musl and
+  console definitions; one existing §19.1 runtime link supplies the libc closure.
+- `manifest.json` and `SHA256SUMS`: artifact/source/sysroot SHA-256, tool
+  versions, flags, complete external export/import lists and musl provenance.
+- `musl-sysroot/include`: all upstream musl headers, with generated x86_64 bits.
+- `musl-sysroot/lib/start.bc`, `start.S`, `start.c`, `syscall.c`, `heap.c`:
+  comparison-only startup and Linux primitive/device transport; no host CRT.
+  `bennett-allocator.bc` preserves the allocator-only regression artifact.
+- `musl-sysroot/COPYRIGHT`: upstream licence.
+
+Musl **1.2.5** comes from the unmodified vendored archive at
+https://musl.libc.org/releases/musl-1.2.5.tar.gz, SHA-256
+`a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4`.
+`scripts/musl.py` verifies/extracts it and compiles an explicit upstream closure
+with each major's Clang/llvm-as; llvm-link and opt verify the combined result.
+See [vendor/README.md](vendor/README.md) and
+[libc-shims/README.md](libc-shims/README.md). There is no musl allocator object:
+public malloc/calloc/free and musl's internal calloc use this repo's allocator.
+
+The gate byte-compares both complete sysroots, bitcode and manifests. It checks
+export/allocation attributes, recorded+fresh rung-2 link/LTO closure, allocation
+semantics and ten native golden cases per major. Musl tests compile ordinary
+hello plus formatted printf (including floating point), atexit, explicit exit,
+return-time buffering and putchar/write. Native binaries are static, have no
+undefined symbols or dynamic imports, and print the independent expected bytes.
+Console tests instrument the published model's stores for native history/reset
+and deterministic saved-tape replay, including negative vectors. Executor-level
+acceptance remains the conformance rung-3 gate's job.
 
 ## Consume
 
-The driver links **matching-major** runtimes and arith bitcode with the program
-before post-link LTO and the plugin (dialect §19.1):
+Link matching-major runtime and arith before post-link LTO/plugin (§19.1):
 
 ```sh
-/usr/lib/llvm-18/bin/llvm-link program.bc dist/llvm18/bennett-runtimes.bc \
+/usr/lib/llvm-18/bin/clang --target=x86_64-unknown-linux-musl \
+  --sysroot=dist/llvm18/musl-sysroot -nostdinc \
+  -isystem dist/llvm18/musl-sysroot/include -O2 -flto -emit-llvm -c hello.c -o hello.bc
+/usr/lib/llvm-18/bin/llvm-link hello.bc dist/llvm18/bennett-runtimes.bc \
   ../bennett-arith/dist/llvm18/bennett-arith.bc --only-needed -o linked.bc
 /usr/lib/llvm-18/bin/opt '-passes=lto<O3>' linked.bc -o postlink.bc
+scripts/native-link 18 postlink.bc hello-native
 ```
 
-Use the LLVM 23 tools and `llvm23` artifacts together for that major. Allocation
-wrappers reach the undefined `__bennett_nz_alloc/free/fault` primitives (§3.1,
-§16.9); the plugin lowers them, preserving ISA allocation history. Production
-bitcode defines neither primitives nor markers. Allocation zeroes bytes; overflow
-faults with code 2; free(NULL) is inert; the primitive faults with code 7 on
-invalid/double free. Storage is never reclaimed (§17.1/17.5, ISA §7.1).
+Use LLVM 23 with llvm23 artifacts. `native-link` is auditable native **support**
+for original bitcode, not the driver-materialised §17.7 comparison build. It links
+matching runtimes and arith with `-nostdlib -nostdinc -static -O2`, retains runtime
+ABI definitions through native codegen (which can introduce libcalls), and
+replaces only the syscall transport with the comparison-only Linux backend.
+The driver still owns materialisation, bounds checks, argv/envp preparation,
+§14.7 exit pseudo-exception propagation, and the common §19.5 layout.
+`BENNETT_ARITH_ROOT` selects another arith checkout. Gate corpus dependencies
+can also be selected with `BENNETT_CONFORMANCE_ROOT`.
 
-`src/native/heap.c` is a **comparison-only x86_64 Linux primitive backend**;
-compile it with `-O2 -ffreestanding -fno-builtin -no-pie` and link with
-`-Wl,--section-start=.bennett_heap=0x10000000`. Configure
-`BENNETT_NATIVE_HEAP_SIZE` (default 16 MiB) and `BENNETT_NATIVE_ALLOCATIONS`
-(default 65536) to match the comparison layout. It uses direct diagnostic writes
-and traps on failure. Retain the complete runtimes bitcode at native codegen:
-`--only-needed` can discard `memset` before LLVM forms a native libcall.
-The gate audits the native corpus/backend closure and dynamic imports.
+Allocation wraps undefined `__bennett_nz_alloc/free/fault` primitives
+(§3.1/16.9). Bytes are zeroed; calloc overflow faults 2 before mutation;
+free(NULL) is inert; invalid/double free faults 7; storage is not reclaimed
+(§17.1/17.5, ISA §7.1). The comparison heap is fixed at 0x10000000, with a
+16 MiB default capacity and 65536 allocation records (configurable in heap.c).
+Exact byte-bump history follows §16.9; odd-sized typed allocation alignment is
+still dialect bead b-dialect-spec-jjr.
 
-This tests native comparison **support**, not a driver-materialised §17.7 binary
-or full runtime conformance. Device bounds instrumentation and comparison layout
-remain driver/plugin responsibilities. Exact byte-bump allocation follows the
-§16.9 example; odd-sized typed C allocation alignment needs contract resolution
-(`b-dialect-spec-jjr`). Broader libc and all remaining runtime contracts retain
-scope under `brt-q1k` / `brt-zct`; no unsupported-symbol trap stubs are published.
-
-## Rung 3 musl publication (brt-1ft)
-
-The combined `bennett-runtimes.bc` now includes the explicit musl 1.2.5
-stdio/exit closure from the unchanged, vendored source archive. Its SHA-256 is
-`a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4`;
-see `vendor/README.md` for provenance/licence and `scripts/musl.py` for source
-selection. Build is offline, using each major's Clang/llvm-as/llvm-link/opt.
-All musl headers are in `dist/llvm<M>/musl-sysroot/include`; the manifest hashes
-every sysroot file and records tools, flags, sources and exports. The combined
-artifact keeps the existing §19.1 consumer link sufficient. There is no musl
-malloc: public malloc/calloc/free remain this repo's zero-filling wrappers;
-musl's internal calloc alias routes to the same implementation (§17.1).
-
-`musl-sysroot/lib` supplies comparison-only Linux x86_64 start.S/start.c,
-syscall.c and the primitive heap backend. `scripts/native-link M INPUT.bc OUTPUT`
-uses these with `-nostdlib -nostdinc -static -O2`, without host CRT/libc/libm.
-This tests native support; the driver still owns §17.7 materialisation/layout,
-§19.2 argv/envp preparation and §14.7 pseudo-exception propagation. The static
-single-thread musl process context supplies errno and locale without host TLS.
-The separately hashed allocator bitcode under the sysroot is a regression-test
-artifact; consumers use the combined runtime, not two allocator definitions.
-
-The musl platform syscall header routes to `__bennett_rt_syscall`; the console
-bridge is tracked by brt-cgb. No production marker is defined. Startup and
-writev/terminal-query readings are recorded in dialect bead b-dialect-spec-lbq.
-The gate byte-compares the entire sysroot and both bitcode publications, tests
-ordinary hello, formatted printf (including floating point), real atexit handlers,
-stdio flush and static native closure. Remaining musl families stay within
-brt-q1k/brt-zct; this source closure is not a claim of full DR conformance.
+The syscall bridge maps stdout/stderr write/writev to the **undefined** console
+marker (§11.2). R retains ISA effect/tape semantics; L calls the published
+`__bennett_dev_console_write` over bound ordinary reversible state (§11.3).
+See [device-models/README.md](device-models/README.md) for state layout, binding,
+capacity, fault, native-model history and replay rules. Dialect bead
+b-dialect-spec-lbq records both readings of startup/syscall framing/tape details;
+the implementation follows the spec's tier distinction. No unsupported-symbol
+trap stubs replace musl implementations. Remaining VFS/device/thread and broader
+libc families remain promised scope under brt-zct/brt-q1k.

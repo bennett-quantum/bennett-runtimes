@@ -14,7 +14,7 @@ FILES='''stdio/printf stdio/vfprintf stdio/puts stdio/fputs stdio/fwrite
 stdio/__towrite stdio/__overflow stdio/__stdio_write
 stdio/__stdout_write stdio/__stdio_close stdio/__stdio_seek stdio/stdout
 stdio/stderr stdio/__stdio_exit stdio/__lockfile stdio/ofl stdio/fflush
-stdio/putc stdio/fputc stdio/putchar stdio/__lockfile
+stdio/setvbuf stdio/putc stdio/fputc stdio/putchar stdio/__lockfile
 exit/exit exit/_Exit exit/atexit unistd/write unistd/writev unistd/lseek
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
