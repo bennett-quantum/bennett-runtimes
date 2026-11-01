@@ -74,35 +74,4 @@ for major in (18, 23):
             undefined = nonintrinsic_undefined(text)
             assert undefined <= PRIMITIVES | MARKERS, (major, label, pipeline, undefined)
             assert '__bennett_nz_alloc' in undefined
-    # Native comparison support, not a full §17.7 materialised driver build:
-    # original corpus, linked bitcode, same-major LTO, real runtime primitives.
-    original = TMP/f'original-{major}.bc'
-    linked = TMP/f'native-linked-{major}.bc'
-    optimized = TMP/f'native-lto-{major}.bc'
-    backend = TMP/f'heap-{major}.bc'
-    run(llvm/'clang', '-target', 'x86_64-unknown-linux-gnu', '-O2', '-flto', '-emit-llvm', '-c',
-        RUNG/'fixtures/hashtable.c', '-o', original)
-    # Keep native ABI memory entry points: codegen can form a memset libcall
-    # after --only-needed would have discarded its definition.
-    run(llvm/'llvm-link', original, bc, '-o', linked)
-    with_arith = TMP/f'native-arith-{major}.bc'
-    run(llvm/'llvm-link', linked, arith, '--only-needed', '-o', with_arith)
-    run(llvm/'opt', '-passes=lto<O3>', with_arith, '-o', optimized)
-    run(llvm/'clang', '-target', 'x86_64-unknown-linux-gnu', '-O2', '-ffreestanding', '-fno-builtin',
-        '-emit-llvm', '-c', ROOT/'src/native/heap.c', '-o', backend)
-    native_ir = run(llvm/'llvm-dis', backend, '-o', '-').decode()
-    assert nonintrinsic_undefined(native_ir) == set(), nonintrinsic_undefined(native_ir)
-    combined = TMP/f'native-closed-{major}.bc'
-    run(llvm/'llvm-link', optimized, backend, '-o', combined)
-    assert nonintrinsic_undefined(run(llvm/'llvm-dis', combined, '-o', '-').decode()) == set()
-    exe = TMP/f'golden-{major}'
-    run(llvm/'clang', '-target', 'x86_64-unknown-linux-gnu', '-O2', '-no-pie',
-        '-Wl,--section-start=.bennett_heap=0x10000000', combined,
-        RUNG/'fixtures/main_golden.c', '-o', exe)
-    output = run(exe)
-    (TMP/f'native-{major}.txt').write_bytes(output)
-    assert output == GOLDEN, (major, output)
-    # Ensure no allocator or memory shim resolves dynamically to host libc.
-    nm = run(llvm/'llvm-nm', '--undefined-only', exe).decode()
-    assert not re.search(r'\b(?:malloc|calloc|free|memset|memcpy|memmove)(?:@|\s|$)', nm), nm
-    print(f'LLVM {major}: export/attribute audit, recorded+fresh link/LTO closure, ten native cases PASS')
+    print(f'LLVM {major}: export/attribute audit, recorded+fresh link/LTO closure PASS')

@@ -47,7 +47,10 @@ def prepare(root, out, scratch):
         syscall+=f'static inline long __syscall{n}({",".join(args)}) {{ return __bennett_rt_syscall({",".join(vals)}); }}\n'
     (overlays/'syscall_arch.h').write_text(syscall)
     lib=out/'musl-sysroot/lib'; lib.mkdir(parents=True,exist_ok=True)
-    for name in ('start.S','start.c','syscall.c','heap.c'): shutil.copyfile(root/'src/native'/name,lib/name)
+    for name in ('start.S','start.c','syscall.c','heap.c'): (lib/name).unlink(missing_ok=True)
+    shutil.copytree(root/'src/native',lib/'native',dirs_exist_ok=True)
+    (lib/'musl').mkdir(exist_ok=True)
+    shutil.copyfile(root/'src/musl/syscall.c',lib/'musl/syscall.c')
     shutil.copyfile(src/'COPYRIGHT',out/'musl-sysroot/COPYRIGHT')
     flags=['--target=x86_64-unknown-linux-musl','-std=c99','-O2','-flto','-emit-llvm','-ffreestanding','-fno-builtin','-fno-vectorize','-fno-slp-vectorize','-fno-ident','-Wno-deprecated-non-prototype','-Wno-shift-op-parentheses','-fno-stack-protector','-nostdinc','-D_XOPEN_SOURCE=700']
     for path in (overlays,src/'arch/x86_64',src/'arch/generic',src/'src/include',src/'src/internal',inc):

@@ -1,21 +1,26 @@
 #!/usr/bin/env bash
-# Comparison support for original C/bitcode; driver materialisation remains §17.7.
+# Original-input convenience adapter. The driver owns materialised comparisons.
 set -euo pipefail
 unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
 root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
 export TMPDIR="$root/.tmp"
-major="$1"; input="$2"; output="$3"
+if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
+  echo 'usage: native-link 18|23 INPUT.bc OUTPUT DRIVER-LAYOUT.bc [COMPARISON.ld] (required resolved layout)' >&2
+  exit 1
+fi
+major="$1"; input="$2"; output="$3"; layout="$4"
 case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
-sysroot="$root/dist/llvm$major/musl-sysroot"
+dist="$root/dist/llvm$major"
+link_flags=()
+if [ "$#" -eq 5 ]; then link_flags+=("-Wl,-T,$5"); fi
 scratch="$(mktemp -d "$TMPDIR/native-link-XXXXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
-"/usr/lib/llvm-$major/bin/llvm-link" "$input" --override="$root/dist/llvm$major/bennett-runtimes.bc" -o "$scratch/combined.bc"
-"/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl -O2 -ffreestanding -fno-builtin -emit-llvm -c "$sysroot/lib/syscall.c" -o "$scratch/syscall.bc"
 arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
-"/usr/lib/llvm-$major/bin/llvm-link" "$scratch/combined.bc" "$arith" --only-needed --override="$scratch/syscall.bc" -o "$scratch/native.bc"
+# Retain startup and libc definitions needed by native codegen libcalls.
+"/usr/lib/llvm-$major/bin/llvm-link" "$input" "$layout" \
+  --override="$dist/bennett-runtimes-native.bc" -o "$scratch/native.bc"
+"/usr/lib/llvm-$major/bin/llvm-link" "$scratch/native.bc" "$arith" --only-needed -o "$scratch/closed.bc"
 "/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl \
-  --sysroot="$sysroot" -nostdlib -nostdinc -static -O2 -fno-pie \
-  -ffreestanding -fno-builtin -isystem "$sysroot/include" -Wl,-e,_start \
-  -Wl,--section-start=.bennett_heap=0x10000000 \
-  "$scratch/native.bc" \
-  "$sysroot/lib/start.S" "$sysroot/lib/start.bc" "$sysroot/lib/heap.c" -o "$output"
+  --sysroot="$dist/musl-sysroot" -nostdlib -nostdinc -static -no-pie -O2 \
+  -ffreestanding -fno-builtin -Wl,-e,_start -Wl,--no-undefined \
+  "${link_flags[@]}" "$scratch/closed.bc" -o "$output"

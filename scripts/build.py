@@ -64,12 +64,26 @@ def build(major):
         run(llvm/'llvm-as', ll, '-o', bc)
         objects.append(bc)
     (out/'musl-sysroot/lib/bennett-allocator.bc').write_bytes(core.read_bytes())
-    start = scratch/'start.ll'
-    run(llvm/'clang', *musl_flags, '-S', 'src/native/start.c', '-o', start)
-    text = re.sub(r'^; ModuleID = .*\n', '', start.read_text(), flags=re.M)
-    text = re.sub(r'^source_filename = .*', 'source_filename = "src/native/start.c"', text, flags=re.M)
-    start.write_text(text)
-    run(llvm/'llvm-as', start, '-o', out/'musl-sysroot/lib/start.bc')
+    native_objects = []
+    native_sources = ['src/native/start.c', 'src/native/heap.c', 'src/native/os.c', 'src/native/syscall.c']
+    for source in native_sources:
+        ll = scratch/('native-'+Path(source).stem+'.ll')
+        run(llvm/'clang', *FLAGS, '-nostdinc', '-isystem', out/'musl-sysroot/include',
+            '-fno-stack-protector', '-fno-pie', '-S', '-emit-llvm', source, '-o', ll)
+        text = re.sub(r'^; ModuleID = .*\n', '', ll.read_text(), flags=re.M)
+        text = re.sub(r'^source_filename = .*', f'source_filename = "{source}"', text, flags=re.M)
+        ll.write_text(text)
+        bc = ll.with_suffix('.bc')
+        run(llvm/'llvm-as', ll, '-o', bc)
+        native_objects.append(bc)
+    (out/'musl-sysroot/lib/start.bc').write_bytes(native_objects[0].read_bytes())
+    support = out/'musl-sysroot/lib/native-support.bc'
+    run(llvm/'llvm-link', *native_objects, '-o', support)
+    native = out/'bennett-runtimes-native.bc'
+    # Only the syscall bridge is replaced. The musl/allocator/L-console sources
+    # are identical; native primitive definitions never enter production.
+    run(llvm/'llvm-link', *objects, '--override='+str(support), '-o', native)
+    run(llvm/'opt', '-passes=strip-dead-prototypes,verify', native, '-o', native)
     artifact = scratch/'publish.bc'
     run(llvm/'llvm-link', *objects, '-o', artifact)
     run(llvm/'opt', '-passes=verify', '-disable-output', artifact)
@@ -78,7 +92,7 @@ def build(major):
     assert set(EXPORTS + ['printf','puts','write','exit']) <= set(exports), exports
     assert not re.search(r'^define .*@(?:__bennett_nz_|__bennett_effect_)', ir, re.M)
     manifest = {
-        'implementation': 'musl-console-v1', 'llvm_major': int(major),
+        'implementation': 'musl-console-native-v2', 'llvm_major': int(major),
         'target': 'x86_64-unknown-linux-musl', 'dialect': '0.2.10',
         'dialect_commit': '023f5a771a814270634db3be9cfde88ded69f975',
         'isa': '0.8', 'sha256': sha(artifact), 'exports': exports,
@@ -87,11 +101,21 @@ def build(major):
         'primitive_imports': ['__bennett_nz_alloc', '__bennett_nz_fault', '__bennett_nz_free'],
         'flags': FLAGS,
         'musl': {'version': musl.VERSION, 'url': musl.URL, 'source_sha256': musl.SHA, 'files': sorted(set(musl.FILES)), 'flags': [re.sub(str(scratch), '<build>', re.sub(str(out), '<dist>', f)) for f in musl_flags]},
+        'native': {
+            'artifact': 'bennett-runtimes-native.bc', 'sha256': sha(native),
+            'support_artifact': str(support.relative_to(out)), 'support_sha256': sha(support),
+            'exports': sorted(line.split()[-1] for line in run(llvm/'llvm-nm', '--defined-only', '--extern-only', native).splitlines() if line.split()),
+            'undefined_imports': sorted(line.split()[-1] for line in run(llvm/'llvm-nm', '--undefined-only', native).splitlines() if line.split()),
+            'layout': {'symbol': '__bennett_rt_native_layout', 'abi_version': 1,
+                       'fields': ['abi_version:u64', 'heap_base:u64', 'heap_limit_max:u64'],
+                       'allocation_records': 'heap_limit_max (max(n,1) consumes at least one byte)'},
+            'extra_flags': ['-nostdinc', '-isystem <dist>/musl-sysroot/include', '-fno-stack-protector', '-fno-pie'],
+        },
         'sysroot': {str(p.relative_to(out)): sha(p) for p in sorted((out/'musl-sysroot').rglob('*')) if p.is_file()},
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'src/musl/context.c', 'src/native/start.S', 'src/native/start.c', 'src/native/syscall.c', 'src/native/heap.c', 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'
@@ -99,7 +123,7 @@ def build(major):
     temporary.replace(out/'bennett-runtimes.bc')
     (out/'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True)+'\n')
     (out/'SHA256SUMS').write_text(''.join(f'{sha(out/name)}  {name}\n'
-                                        for name in ('bennett-runtimes.bc', 'manifest.json')))
+                                        for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'manifest.json')))
     print(f'LLVM {major}: {manifest["sha256"]}  {out/"bennett-runtimes.bc"}')
 
 if __name__ == '__main__':

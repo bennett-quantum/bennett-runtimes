@@ -12,16 +12,21 @@ resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 for major in (18, 23):
     clang = f'/usr/lib/llvm-{major}/bin/clang'
     exe = TMP / f'allocator-{major}'
-    subprocess.run([clang, '-target', 'x86_64-unknown-linux-gnu', '-O2', '-ffreestanding', '-fno-builtin', '-no-pie',
-                    '-DBENNETT_NATIVE_HEAP_SIZE=256', '-DBENNETT_NATIVE_ALLOCATIONS=64',
-                    '-Wl,--section-start=.bennett_heap=0x10000000',
-                    str(ROOT/'tests/allocator.c'), str(ROOT/'src/native/heap.c'),
-                    str(ROOT/f'dist/llvm{major}/musl-sysroot/lib/bennett-allocator.bc'), '-o', str(exe)], check=True)
+    dist=ROOT/f'dist/llvm{major}'
+    flags=['--target=x86_64-unknown-linux-musl', '-O2', '-ffreestanding', '-fno-builtin',
+           '-nostdinc', '-isystem', str(dist/'musl-sysroot/include'), '-emit-llvm', '-c']
+    source=TMP/f'allocator-{major}.bc'
+    subprocess.run([clang,*flags,ROOT/'tests/allocator.c','-o',source],check=True)
+    config=TMP/f'layout-{major}.c'
+    config.write_text('const unsigned long __bennett_rt_native_layout[3]={1,0x19000000,256};\n')
+    layout=TMP/f'layout-{major}.bc'
+    subprocess.run([clang,*flags,config,'-o',layout],check=True)
+    subprocess.run([ROOT/'scripts/native-link',str(major),source,exe,layout],check=True)
     subprocess.run([str(exe)], check=True)
-    for case, message in [('d', b'invalid or double free'), ('i', b'invalid or double free'),
-                          ('g', b'invalid or double free'), ('o', b'heap exhausted'),
-                          ('c', b'heap exhausted'), ('h', b'heap exhausted'),
-                          ('t', b'allocation table exhausted')]:
+    for case, message in [('d', b'fault 7'), ('i', b'fault 7'),
+                          ('g', b'fault 7'), ('o', b'fault 2'),
+                          ('c', b'fault 2'), ('h', b'fault 2'),
+                          ('t', b'fault 2')]:
         result = subprocess.run([str(exe), case], capture_output=True, timeout=5)
         assert result.returncode == -signal.SIGILL, (major, case, result)
         assert message in result.stderr, (major, case, result.stderr)

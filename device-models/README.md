@@ -78,3 +78,14 @@ action capacity, writev aggregate preflight and unbound/unmodelled faults. Musl
 stdio configuration is prepared outside the model run; model reset tests cover
 device/tape state, not an executor's entire libc/stack state. The conformance
 rung-3 gate owns whole-program forward/native, un-run and replay acceptance.
+
+## Native comparison transport
+
+The comparison-only publication compiles the same syscall bridge with
+`BENNETT_NATIVE_COMPARISON`. Write/writev retain fd/aggregate/zero-length policy,
+but top-level console events reach `__bennett_rt_native_console_write`, a Linux
+stdout transport that handles short writes/EINTR and faults 8 on failure.
+This is the native console twin, not an effect-marker definition. The ordinary
+L/private console function above is unchanged. Exit uses Linux exit_group;
+unknown operations still fault 8. Heap mapping and fault diagnostics use a
+separate private Linux transport; user syscalls cannot access it through musl.

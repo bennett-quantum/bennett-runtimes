@@ -10,8 +10,11 @@ calloc to the published zero-filling allocator. No host TLS/libc is used.
 Generated platform headers live outside the upstream source tree. Syscall
 wrappers call `__bennett_rt_syscall`, whose console policy is documented in
 `device-models/README.md`. The native-only Linux syscall backend is separate and
-never published as device bitcode. `musl-sysroot/lib/start.bc` plus start.S
-provide comparison startup; the driver prepares the §19.2 device entry itself.
+published only in `bennett-runtimes-native.bc` and `lib/native-support.bc`,
+never in device bitcode. Both include `_start`; `lib/start.bc` is also available
+as standalone startup. No extra start.S is needed with these modules. The driver
+prepares the §19.2 device entry itself. See the root README for the required
+resolved-layout table and materialised-native link order.
 
 Musl exit/atexit/stdio flush are real upstream code. `_Exit` uses exit_group;
 N28–N30 must materialise this nonreturning path with the dedicated returning

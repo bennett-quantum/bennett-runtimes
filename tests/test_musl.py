@@ -26,6 +26,10 @@ for m in (18,23):
                 ('flush', '#include <stdio.h>\nint main(void){printf("%s %d","buffered",7); return 0;}', b'buffered 7'),
                 ('putc', '#include <stdio.h>\n#include <unistd.h>\nint main(void){write(1,"direct ",7); putchar(65); return 0;}', b'direct A'),
                 ('exit', '#include <stdio.h>\n#include <stdlib.h>\nint main(void){printf("exit %d",23); exit(23);}', b'exit 23')]
+    config=TMP/f'layout-{m}.c'
+    config.write_text('const unsigned long __bennett_rt_native_layout[3]={1,0x1a000000,1048576};\n')
+    layout=TMP/f'layout-{m}.bc'
+    run(llvm/'clang','--target=x86_64-unknown-linux-musl','-ffreestanding','-emit-llvm','-c',config,'-o',layout)
     for label, code, expected in fixtures:
         source=TMP/f'{label}.c'; source.write_text(code)
         bc=TMP/f'{label}-{m}.bc'; linked=TMP/f'{label}-linked-{m}.bc'
@@ -33,7 +37,7 @@ for m in (18,23):
         run(llvm/'llvm-link', bc, dist/'bennett-runtimes.bc', ARITH/f'dist/llvm{m}/bennett-arith.bc', '--only-needed', '-o', linked)
         run(llvm/'opt', '-passes=lto<O3>', linked, '-o', linked)
         exe=TMP/f'{label}-{m}'
-        run(ROOT/'scripts/native-link', str(m), linked, exe)
+        run(ROOT/'scripts/native-link', str(m), linked, exe, layout)
         result=subprocess.run([exe],capture_output=True,timeout=10)
         assert result.stdout==expected and result.returncode==(23 if label=='exit' else 0), (m,label,result)
         assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()

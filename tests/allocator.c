@@ -8,9 +8,11 @@ extern void __bennett_rt_memset(void *, unsigned char, uint64_t);
 extern void __bennett_rt_memmove(void *, const void *, uint64_t);
 extern void *memset(void *, int, size_t);
 
+static void *volatile observed;
+extern const uint64_t __bennett_rt_native_layout[3];
 int main(int argc, char **argv) {
     unsigned char *p = malloc(32);
-    if ((uintptr_t)p != 0x10000000u) return 10;
+    if ((uintptr_t)p != __bennett_rt_native_layout[1]) return 10;
     for (size_t i = 0; i < 32; ++i) if (p[i]) return 11;
     __bennett_rt_memset(p, 0xa5, 32);
     if (argc > 1) {
@@ -18,10 +20,10 @@ int main(int argc, char **argv) {
         case 'd': free(p); free(p); return 20;
         case 'i': free(p + 1); return 21;
         case 'g': free((void *)(uintptr_t)0x1234); return 22;
-        case 'o': (void)malloc(SIZE_MAX); return 23;
-        case 'c': (void)calloc(SIZE_MAX / 2 + 1, 2); return 24;
+        case 'o': observed=malloc(SIZE_MAX); return 23;
+        case 'c': observed=calloc(SIZE_MAX / 2 + 1, 2); return 24;
         case 'h': for (;;) { void *q = malloc(128); free(q); } /* history exhausts */
-        case 't': for (;;) (void)malloc(0); /* allocation table exhausts */
+        case 't': for (;;) observed=malloc(0); /* allocation table exhausts */
         }
         return 25;
     }

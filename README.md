@@ -28,12 +28,17 @@ Each `dist/llvm<M>/` contains:
 
 - `bennett-runtimes.bc`: combined allocator, memory helpers, selected musl and
   console definitions; one existing §19.1 runtime link supplies the libc closure.
-- `manifest.json` and `SHA256SUMS`: artifact/source/sysroot SHA-256, tool
+- `bennett-runtimes-native.bc`: complete comparison-only musl, allocator,
+  console twin, `_start` and Linux primitive/exit closure. Never a device input.
+- `musl-sysroot/lib/native-support.bc`: startup/primitives/native transport only,
+  for an already materialised module (see the exact link order below).
+- `manifest.json` and `SHA256SUMS`: both artifact/source/sysroot SHA-256, tool
   versions, flags, complete external export/import lists and musl provenance.
 - `musl-sysroot/include`: all upstream musl headers, with generated x86_64 bits.
-- `musl-sysroot/lib/start.bc`, `start.S`, `start.c`, `syscall.c`, `heap.c`:
-  comparison-only startup and Linux primitive/device transport; no host CRT.
-  `bennett-allocator.bc` preserves the allocator-only regression artifact.
+- `musl-sysroot/lib/start.bc`: legacy standalone startup bitcode (already
+  includes `_start`; do not combine with start.S). Native sources/header are
+  under `lib/native/`, with the shared bridge under `lib/musl/`.
+  `lib/bennett-allocator.bc` preserves the allocator-only regression artifact.
 - `musl-sysroot/COPYRIGHT`: upstream licence.
 
 Musl **1.2.5** comes from the unmodified vendored archive at
@@ -48,7 +53,10 @@ public malloc/calloc/free and musl's internal calloc use this repo's allocator.
 The gate byte-compares both complete sysroots, bitcode and manifests, including
 a second build from a relocated source tree (stable LLVM 23 local-symbol GUIDs). It checks
 export/allocation attributes, recorded+fresh rung-2 link/LTO closure, allocation
-semantics and ten native golden cases per major. Musl tests compile ordinary
+semantics and ten native golden cases plus rung-3 hello per major, under strict static
+links with two resolved comparison layouts. Native tests require configuration,
+exercise zero capacity/65,537 zero allocations, and reject invalid or colliding
+layouts with typed diagnostics. Musl tests compile ordinary
 hello plus formatted printf (including floating point), atexit, explicit exit,
 return-time buffering and putchar/write. Native binaries are static, have no
 undefined symbols or dynamic imports, and print the independent expected bytes.
@@ -67,26 +75,76 @@ Link matching-major runtime and arith before post-link LTO/plugin (§19.1):
 /usr/lib/llvm-18/bin/llvm-link hello.bc dist/llvm18/bennett-runtimes.bc \
   ../bennett-arith/dist/llvm18/bennett-arith.bc --only-needed -o linked.bc
 /usr/lib/llvm-18/bin/opt '-passes=lto<O3>' linked.bc -o postlink.bc
-scripts/native-link 18 postlink.bc hello-native
+scripts/native-link 18 postlink.bc hello-native driver-layout.bc comparison.ld
 ```
 
-Use LLVM 23 with llvm23 artifacts. `native-link` is auditable native **support**
-for original bitcode, not the driver-materialised §17.7 comparison build. It links
-matching runtimes and arith with `-nostdlib -nostdinc -static -O2`, retains runtime
-ABI definitions through native codegen (which can introduce libcalls), and
-replaces only the syscall transport with the comparison-only Linux backend.
-The driver still owns materialisation, bounds checks, argv/envp preparation,
-§14.7 exit pseudo-exception propagation, and the common §19.5 layout.
-`BENNETT_ARITH_ROOT` selects another arith checkout. Gate corpus dependencies
-can also be selected with `BENNETT_CONFORMANCE_ROOT`.
+Use LLVM 23 with llvm23 artifacts. `native-link M INPUT OUTPUT LAYOUT.bc
+[COMPARISON.ld]` is a convenience for **original** bitcode. Configuration is
+mandatory: it never supplies a heap default. It retains the entire native
+runtime before major-matched arith `--only-needed`, then uses
+`-nostdlib -nostdinc -static -no-pie`. No host CRT/libc/libm is used.
+`BENNETT_ARITH_ROOT` selects another arith checkout;
+`BENNETT_CONFORMANCE_ROOT` selects the gate corpus.
 
-Allocation wraps undefined `__bennett_nz_alloc/free/fault` primitives
-(§3.1/16.9). Bytes are zeroed; calloc overflow faults 2 before mutation;
-free(NULL) is inert; invalid/double free faults 7; storage is not reclaimed
-(§17.1/17.5, ISA §7.1). The comparison heap is fixed at 0x10000000, with a
-16 MiB default capacity and 65536 allocation records (configurable in heap.c).
-Exact byte-bump history follows §16.9; odd-sized typed allocation alignment is
-still dialect bead b-dialect-spec-jjr.
+### Driver: materialised native comparison
+
+Keep `bennett-runtimes.bc` in the production §19.1 link. The native artifact is
+separate bitcode so native primitive definitions cannot enter the device
+pipeline (§3.1), and the same LLVM major performs codegen (§17.7). For an
+already materialised module, use the **support** artifact, preserving its
+materialised functions and L console model:
+
+```sh
+llvm-link device.bc bennett-runtimes.bc bennett-arith.bc --only-needed -o base.bc
+llvm-link base.bc driver-layout.bc --override=musl-sysroot/lib/native-support.bc -o adapted.bc
+llvm-link adapted.bc bennett-runtimes.bc bennett-arith.bc --only-needed -o comparison.bc
+opt -passes=strip-dead-prototypes,verify comparison.bc -o comparison.bc
+clang -O2 -nostdlib -nostdinc -static -no-pie -fno-merge-all-constants \
+  comparison.bc -Wl,-T,comparison.ld -Wl,-e,_start -Wl,--no-undefined -o comparison
+```
+
+All names above are matching-major publication paths/tools. The last bitcode
+link is required: startup introduces exit/environ/stdio-flush dependencies.
+`--override` changes the comparison syscall transport and adds startup and
+primitives; it defines **no effect marker** and preserves the device's
+materialised exit helper/EH globals. Materialisation must already have lowered
+all effect calls and arranged entry/argv/EH handling (§§11,14.7,19.2). This
+support does not rematerialise inlined marker calls. Do not replace materialised
+runtime functions wholesale with the full native artifact; the full artifact
+is for native original-input baselines. Native codegen can introduce libcalls:
+retain required ABI memory definitions if the materialiser removed them.
+
+`__bennett_rt_native_layout` is a required driver-emitted, constant, 8-byte
+aligned object with three LP64 little-endian `uint64_t` fields, in order:
+`{abi_version=1, heap_base, heap_limit_max}`. See the shipped `lib/native/layout.h`.
+Emit the **resolved §19.5 values**: base is the first page boundary after data;
+limit is the largest heap budget, including shadow stack. A linker relocation
+for the base is supported, as tested with two actual comparison linker scripts.
+The driver must place text/arena/interfaces disjointly and replicate addresses
+in device layout. `__bennett_rt_blk.<f>` is k-byte block identity (§14.9), never
+this table. The existing driver does not yet emit this table or perform the
+support merge; consumer integration remains necessary. No driver code changed.
+
+The native heap maps exactly the configured range using Linux
+MAP_FIXED_NOREPLACE; bad ABI/alignment/overflow, collisions and OS low-address
+policy fail loudly with fault 7, never relocate or overwrite mappings. Zero
+capacity is valid and the first allocation faults 2. History has one record
+per heap byte (the maximum possible count because every allocation consumes
+`max(n,1)`); no independent fixed allocation cap can fault before heap capacity.
+The private anonymous history mapping is native bookkeeping, outside device
+addresses. Failure to reserve it faults 2. Allocation zero-fills, free(NULL)
+is inert, invalid/interior/double free faults 7, and dead storage is not reclaimed
+(§§17.1,17.5; ISA §7.1). Every explicit fault emits its full decimal code on
+stderr and traps before subsequent source effects (§11.5). The native console
+twin routes top-level output to stdout; private L writes still use the same
+bound buffer/capacity/truncation model. Arbitrary syscalls never pass to Linux.
+
+Dialect **b-dialect-spec-0na** records both readings of the §3.1 native primitive
+exception/configuration ownership and §19.5 transport. This implementation
+follows the explicit native-comparison requirement with production primitives
+left undefined. ASan/UBSan runtime closure remains tracked in brt-nuu.1 (brt-nuu stays open); this
+publication does not silently link hosted sanitizer libraries. The driver also
+continues to own §17.7 division checks and complete shared layout/launch.
 
 The syscall bridge maps stdout/stderr write/writev to the **undefined** console
 marker (§11.2). R retains ISA effect/tape semantics; L calls the published

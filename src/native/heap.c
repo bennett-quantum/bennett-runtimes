@@ -1,69 +1,67 @@
-/* Comparison-only x86_64 Linux lowering of the §3.1 primitives. NEVER linked
- * into production bitcode: the plugin owns their device lowering. ISA 0.8
- * §7.1: exact byte bump, max(n,1), dead-mark free, no reclaim, preflight limits.
- * Link non-PIE with --section-start=.bennett_heap=0x10000000. The driver must
- * match that base and both configured bounds to its comparison layout.
- */
+/* Comparison-only lowering: never link into production. Dialect §§17.1,
+ * 17.5,19.5; ISA §7.1 byte bump max(n,1), no reclaim, preflight bounds.
+ * The driver supplies layout.h's required resolved layout object. */
 #include <stddef.h>
 #include <stdint.h>
-
-#ifndef BENNETT_NATIVE_HEAP_SIZE
-#define BENNETT_NATIVE_HEAP_SIZE 16777216u
-#endif
-#ifndef BENNETT_NATIVE_ALLOCATIONS
-#define BENNETT_NATIVE_ALLOCATIONS 65536u
-#endif
+#include "layout.h"
 _Static_assert(sizeof(void *) == 8, "native backend requires x86_64 LP64");
-static unsigned char heap[BENNETT_NATIVE_HEAP_SIZE]
-    __attribute__((section(".bennett_heap"), aligned(16)));
-static struct { uintptr_t base; size_t size; unsigned live; }
-    history[BENNETT_NATIVE_ALLOCATIONS];
-static size_t cursor, entries;
+struct allocation { uintptr_t base; uint64_t size, live; };
+static struct allocation *history;
+static uint64_t cursor, entries;
+static int ready;
 
-/* A diagnostic without libc (including without stdio's own malloc). */
-static void diagnostic(const char *s, size_t n) {
-    register long nr __asm__("rax") = 1; /* Linux write(2, s, n) */
-    register long fd __asm__("rdi") = 2;
-    register const char *buf __asm__("rsi") = s;
-    register size_t len __asm__("rdx") = n;
-    __asm__ volatile("syscall" : "+a"(nr) : "D"(fd), "S"(buf), "d"(len)
-                     : "rcx", "r11", "memory");
-}
-#define DIE(text) do { diagnostic(text "\n", sizeof(text "\n") - 1); __builtin_trap(); } while (0)
-
-void __bennett_nz_fault(uint64_t code) {
-    if (code == 2) DIE("bennett runtime fault 2: heap exhausted");
-    if (code == 7) DIE("bennett runtime fault 7: invalid or double free");
-    DIE("bennett runtime: native fault");
+/* Preserve arbitrary fault codes in a stable decimal diagnostic, then trap.
+ * Neither musl nor the console model is called on a failing path. */
+_Noreturn void __bennett_nz_fault(uint64_t code) {
+    char text[64] = "bennett runtime fault ";
+    char digits[20]; size_t n=0, len=22;
+    do { digits[n++]=(char)('0'+code%10); code/=10; } while(code);
+    /* prefix is 22 bytes, excluding its terminating NUL. */
+    while(n) text[len++]=digits[--n];
+    text[len++]='\n';
+    __bennett_rt_native_os(1,2,(long)text,len,0,0,0);
+    __builtin_trap();
 }
 
-void *__bennett_nz_alloc(uint64_t n) {
-    size_t extent = n ? n : 1;
-    if ((uintptr_t)heap != 0x10000000u)
-        DIE("bennett runtime: comparison heap linked at wrong base");
-    if (extent > sizeof(heap) - cursor) {
-        __bennett_nz_fault(2);
-        __builtin_unreachable();
+static void initialise(void) {
+    const struct bennett_native_layout *l=&__bennett_rt_native_layout;
+    if (ready) return;
+    if (l->abi_version!=1 || l->heap_base<4096 || l->heap_base%4096 ||
+        l->heap_limit_max>UINTPTR_MAX-l->heap_base ||
+        l->heap_limit_max>SIZE_MAX/sizeof(*history)) __bennett_nz_fault(7);
+    if (l->heap_limit_max) {
+        /* MAP_FIXED_NOREPLACE: never overwrite globals/text, never relocate.
+         * Linux may reject low addresses (mmap_min_addr); that is a loud fault.
+         * Anonymous private mapping guarantees initial zero fill. */
+        long p=__bennett_rt_native_os(9,l->heap_base,l->heap_limit_max,3,0x100022,-1,0);
+        if ((uint64_t)p!=l->heap_base) __bennett_nz_fault(7);
+        /* max(n,1) consumes at least one byte. One record per heap byte covers
+         * EVERY possible history, including zero-sized/dead allocations. This
+         * private native bookkeeping is never a device-visible allocation. */
+        p=__bennett_rt_native_os(9,0,l->heap_limit_max*sizeof(*history),3,0x22,-1,0);
+        if ((unsigned long)p>=(unsigned long)-4095) __bennett_nz_fault(2);
+        history=(void *)p;
     }
-    if (entries == BENNETT_NATIVE_ALLOCATIONS)
-        DIE("bennett runtime fault 2: allocation table exhausted");
-    unsigned char *p = heap + cursor;
-    history[entries].base = (uintptr_t)p;
-    history[entries].size = n;
-    history[entries].live = 1;
-    ++entries;
-    cursor += extent;
-    for (size_t i = 0; i < n; ++i) ((volatile unsigned char *)p)[i] = 0;
+    ready=1;
+}
+void *__bennett_nz_alloc(uint64_t n) {
+    initialise();
+    uint64_t extent=n?n:1, limit=__bennett_rt_native_layout.heap_limit_max;
+    if (extent>limit-cursor) __bennett_nz_fault(2);
+    unsigned char *p=(void *)(uintptr_t)(__bennett_rt_native_layout.heap_base+cursor);
+    history[entries].base=(uintptr_t)p;
+    history[entries].size=n;
+    history[entries].live=1;
+    ++entries; cursor+=extent;
+    for (uint64_t i=0;i<n;++i) ((volatile unsigned char *)p)[i]=0;
     return p;
 }
-
 void __bennett_nz_free(void *p) {
-    for (size_t i = 0; i < entries; ++i) {
-        if (history[i].base == (uintptr_t)p && history[i].live) {
-            history[i].live = 0;
-            return;
+    if (!p) return;
+    for (uint64_t i=0;i<entries;++i) {
+        if (history[i].base==(uintptr_t)p && history[i].live) {
+            history[i].live=0; return;
         }
     }
     __bennett_nz_fault(7);
-    __builtin_unreachable();
 }
