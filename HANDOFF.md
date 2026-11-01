@@ -1,104 +1,102 @@
-# Handoff — resolved-layout native comparison closure
+# Handoff — strict O0 UBSan minimal comparison subset
 
-Updated UTC: 2026-11-01T14:21:41Z (`date -u`). No push/network; driver source read-only.
+Updated UTC: 2026-11-01T14:42:16Z (`date -u`). Offline/headless; no push; driver read-only.
 Pinned dialect **0.2.10 @023f5a771a814270634db3be9cfde88ded69f975**, ISA **0.8**.
-Implementation commit **43bef24**. brt-nuu's requested native O2 closure is now
-published; brt-nuu remains open for its sanitizer/consumer integration scope.
+First implementation commit **504abe5**; following refinement/handoff commit
+adds complete Apache licence and tests the resolved comparison linker script.
+Initial checkout was d8f7591, the consumer bead-only update after 5c045f9.
+
+## Publication and exact limits
+
+Both majors publish the unchanged, SHA-pinned compiler-rt UBSan minimal archive,
+`sanitizer-support.bc`, compiler-rt copyright/provenance and full Apache licence.
+The archive imports exactly **abort, strlen, write**. Existing real musl supplies
+strlen/write; native-only abort resets/unblocks SIGABRT and terminates via Linux
+tgkill. No sanitizer handler is faked. Native musl write(2) now preserves stderr
+instead of redirecting sanitizer diagnostics to stdout. All production bitcode
+SHAs remain unchanged; native/full and native-support SHAs change for stderr.
 
 | LLVM | Path under dist/llvmM | SHA-256 |
 |---|---|---|
-| 18 | `bennett-runtimes.bc` | `6c1741c4e511a08a22eff47ed4380aed626557ee66225b38a884edc83e9f319d` |
-| 18 | `bennett-runtimes-native.bc` | `33fe088ada8fe26e48b5073cd49728e23d7da36d6f541d1b2d047f65dd12569f` |
-| 18 | `musl-sysroot/lib/native-support.bc` | `2dc059d487ba0214fe34bd7b90a6bf948c9fae3899eb1b828fad9342bd7641a6` |
-| 23 | `bennett-runtimes.bc` | `a63f0421e1d40ebfe6bd391ffa9344db0807aa966a03eed8274e225710a54632` |
-| 23 | `bennett-runtimes-native.bc` | `7065f87587205d0b3a414eaf0b7a5ddf41b3d353bc477cd06371c62cd9936442` |
-| 23 | `musl-sysroot/lib/native-support.bc` | `e775ad18bf7ff43dc68018713dc62ef9e2f829769e7006c26eab1b5e37e4907d` |
+| 18 | `libclang_rt.ubsan_minimal-x86_64.a` | `66e08178e5231422dbe6717cbb0bd427ee4bb678175830ce1064d9d0b50781da` |
+| 18 | `sanitizer-support.bc` | `42e67e298b707090a66b331f47c63916e8364292a5f75a83106c88346d5f9878` |
+| 18 | `bennett-runtimes-native.bc` | `9a40f1b1de32a54848a3913e4576e700a260e2d066cf40a16e71a24c3d679dd6` |
+| 18 | `musl-sysroot/lib/native-support.bc` | `5aa89fa079f037369d32aad98b6e95dcb43b169400da6c278eaa87336133f313` |
+| 23 | `libclang_rt.ubsan_minimal-x86_64.a` | `006cb02eeb8aeda11a20fa6c0d1bdcfadcb59b924be5755f7229dfcdcb8b82d6` |
+| 23 | `sanitizer-support.bc` | `5444e22b761e4cf1fa50321dc24c4b0572771298f1edc6a351a2a60aaa19f9ed` |
+| 23 | `bennett-runtimes-native.bc` | `b58659c456b8ebb75db5a307860e5ee9d4c18ce277b7d5f510b26b4cd5dbb3ff` |
+| 23 | `musl-sysroot/lib/native-support.bc` | `d09e2ad33fe17bc353afe74aebed22da8c7caa8dc1127cbaf942add1af894e9f` |
 
-Production bitcode SHAs are unchanged from M2. Native definitions are isolated
-from production: no primitive or effect marker is defined in the device library.
-Native bitcode uses real pinned musl 1.2.5, the same allocator and L console
-model, a native build of the same syscall bridge, `_start`/Linux exit, native
-console stdout transport and native alloc/free/fault. No host libc/libm/CRT or
-hosted sanitizer library is linked. No unsupported-symbol trap stubs were added.
+`manifest.json` and `SHA256SUMS` include all artifacts/licences; manifests retain
+source/tool/flag provenance, native export/import lists and complete sysroot
+hashes. Vendored archive inputs and fixed hashes are under vendor/compiler-rt
+and scripts/build.py. Builds never select hosted runtime libraries.
 
-## Resolved layout and driver integration
+This is **UBSan minimal**, not `O0-ASan-UBSan`. Instrument original user inputs
+with matching Clang `-O0 -fsanitize=undefined -fsanitize-minimal-runtime
+-fno-sanitize-recover=all`, using the published musl headers. Published runtime
+internals remain uninstrumented. Minimal reports are terse and lack source/type
+metadata and vptr checks. There are no ASan allocation bounds, heap/stack/global
+redzones or UAF checks. Array index UBSan checks do not imply memory safety.
+No ASan-positive execution or faulty-fixture ASan report is claimed.
 
-The required driver-emitted `__bennett_rt_native_layout` constant is three
-8-byte-aligned little-endian u64 fields: `{1, heap_base, heap_limit_max}`.
-The base may be a linker relocation. Use the resolved §19.5 values: first page
-after data and largest heap budget (including shadow stack). Do NOT read
-`__bennett_rt_blk.<f>`: §14.9 gives those k-byte blockaddress identity only.
-Heap mapping uses MAP_FIXED_NOREPLACE: exact configured address or typed loud
-failure, including Linux low-address restrictions; no default/relocation.
-History is private native bookkeeping, one record per configured byte, so
-max(n,1) can never exhaust an independent smaller allocation table. Zero fill,
-no reclaim, free(NULL), invalid/interior/double free and budget fault semantics
-follow §§17.1/17.5 and ISA §7.1. Fault diagnostics preserve every uint64 code
-before SIGILL; no subsequent source effect executes (§11.5).
+Actual strict compiler-rt ASan probes fail on both majors: the runtime explicitly
+rejects static linkage via `_DYNAMIC` (AsanDoesNotSupportStaticLinkage), alongside
+unresolved dlsym/dlvsym/dladdr, pthread TLS/stack/atfork, getrlimit and broader
+libc/libm. Do not fake `_DYNAMIC`, supply no-op interceptors or use host libc.
+A real port must also initialize constructors/shadow mappings and support the
+comparison allocator without colliding with the resolved device heap.
+**brt-nuu.2** retains the full ASan implementation and acceptance obligation.
+**brt-nuu.1** is closed for the explicitly allowed, documented subset;
+**brt-nuu remains open** because full ASan remains, beyond driver cyg.3.
 
-Use full `bennett-runtimes-native.bc` for original-input native baselines, never
-to overwrite materialised functions. For materialised device input, the order is:
+## Driver consumption
 
-1. `llvm-link device.bc bennett-runtimes.bc bennett-arith.bc --only-needed`.
-2. Link that result plus `driver-layout.bc`, with
-   `--override=musl-sysroot/lib/native-support.bc` (retain all support definitions).
-3. Link the adapted module with production runtimes then arith `--only-needed`
-   **again**: startup introduces exit/environ/stdio-flush imports.
-4. `opt -passes=strip-dead-prototypes,verify`; same-major clang `-O2 -nostdlib
-   -nostdinc -static -no-pie`, driver comparison script, `-Wl,-e,_start` and
-   `-Wl,--no-undefined`. Retain any ABI memory helpers native codegen needs.
+README gives full commands. For original-input diagnostics:
 
-The support overrides only the syscall transport and adds native functions;
-materialised exit helper/EH state and L model remain intact. No effect marker
-is defined. The materialiser must already have lowered all effect calls,
-including inlined ones. Native startup does not supply §19.2 device entry
-preparation or replace §14.7 EH propagation. §17.7 division checks, common
-native/device addresses and complete launch remain driver responsibilities.
-README contains the exact commands and original-input `scripts/native-link`
-usage (required configuration, optional comparison script).
+1. Compile each original TU (including main) with the flags above; llvm-link TUs.
+2. `llvm-link input.bc driver-layout.bc
+   --override=bennett-runtimes-native.bc -o native.bc` (retain native closure).
+3. `llvm-link native.bc bennett-arith.bc --only-needed -o closed.bc`.
+4. Matching Clang `--target=x86_64-unknown-linux-musl -O0 -nostdlib -nostdinc
+   -static -no-pie -ffreestanding -fno-builtin -fno-sanitize-link-runtime
+   -Wl,-e,_start -Wl,--no-undefined closed.bc sanitizer-support.bc
+   libclang_rt.ubsan_minimal-x86_64.a -Wl,-T,comparison.ld -o diagnostic`.
 
-The existing driver does not yet emit this table or implement the support
-merge. No actual plugin-materialised driver comparison execution is claimed:
-the new adapter tests an already-linked shape, alongside unmodified corpus
-baselines. Existing R/ISA whole-program blockers remain as recorded in M2;
-this publication does not resolve bp-ivy/BD-B-ISA7 or executor reset/replay.
+`scripts/native-sanitizer-link M ubsan-minimal INPUT OUTPUT LAYOUT [SCRIPT]`
+implements this order; `plain` omits sanitizer objects and is the O0 control.
+Unsupported variants, including asan, fail loudly. Never relabel this subset
+as ASan or silently downgrade a requested ASan row.
 
-## Verification and tracking
+The required `__bennett_rt_native_layout` remains an 8-byte-aligned three-u64
+constant `{1, heap_base, heap_limit_max}` with resolved §19.5 addresses/capacity;
+base may be a linker relocation. No default, relocation on failure or host
+allocator fallback. Full native bitcode is for original-input baselines only.
+Keep materialised comparisons on README's support-override-before-final-closure
+order; do not overwrite materialised functions with full native bitcode.
 
-RED: `tests/test_native.py` initially failed on missing native publication.
-GREEN: `scripts/gate` PASS, both majors: same-checkout and relocated-source
-byte-for-byte bitcode/manifests/full sysroots; export/import and allocation
-attributes; fresh+recorded rung-2 LTO closure; ten unmodified hashtable golden
-cases plus rung-3 hello under strict static no-host links and two actual
-§19.5 linker layouts. Support-adapter links and missing-layout refusal pass.
-Native binaries have zero undefined symbols/dynamic imports. Additional
-vectors cover 65,537 zero-size allocations, zero heap, invalid ABI/alignment,
-null/overflow/colliding ranges, seven allocator fault cases and arbitrary
-uint64 fault codes; musl printf float/atexit/flush/explicit exit/write/putchar
-and instrumented console reset/replay/tamper tests pass. The existing allocator
-and console unit executables now also use strict freestanding links.
+Driver integration belongs to cyg.3. Parent bead d8f7591 records that the driver
+now consumes native support/layout and passes strict O0/O2 allocation probes;
+actual plugin corpus is blocked on bp-xyn and LLVM18 hello on bp-ozp. This
+session does not claim device-pipeline or plugin-materialised acceptance.
+The driver must separately consume this honest diagnostic subset; production
+§19.1 runtime linking and §17.7 O2 materialised baseline remain as documented.
 
-Clean detached `scripts/pre-push` result: **PASS**, implementation SHA
-`43bef243db4cbab624dbe773b4947e35a66a4317`. The subsequent
-handoff/bead-only commit changes no tested code or publication bytes.
-Root receipts: `.tmp/gate-native.log`, `.tmp/pre-push-native.log`.
+## Evidence
 
-Dialect **b-dialect-spec-0na**, labels consumer,dialect,runtimes, is filed and
-committed as **eaad067** in the dialect repo (export only). It quotes §3.1 and
-§19.5 with both readings: native lowering/configuration exception versus a
-literal ban on native primitive and driver runtime-object definitions. We use
-the reading supporting explicit §17.7 same-major native comparison, isolating
-native support from ordinary device shims (§4.5). Accepted spec unchanged.
-**brt-nuu.1** tracks the remaining real freestanding ASan/UBSan closure or
-specified instrumentation adapter; no no-op sanitizer handlers or host fallback.
-No bead closed prematurely. brt-zct/brt-q1k and allocator alignment dialect
-b-dialect-spec-jjr retain their broader obligations.
+RED: tests/test_sanitizers.py failed on missing LLVM18 sanitizer publication.
+GREEN: both-major O0 plain and minimal UBSan run unchanged rung-2 hashtable's ten
+golden cases and rung-3 hello with exact golden stdout and empty stderr.
+Tests use a resolved comparison linker script and relocated heap-base table.
+Deliberate **global array** out-of-bounds write runs silently in plain; minimal
+UBSan emits `ubsan: out-of-bounds` on stderr and terminates with SIGABRT.
+The faulty fixture crosses an ASan global redzone when the full port is ready;
+current ASan tests record strict-link rejection, not successful diagnosis.
+All accepted binaries are static EXEC with zero undefined symbols/dynamic
+imports. Archive and support imports are audited independently.
 
-Gotchas found: startup must precede final --only-needed closure; a custom
-linker script must explicitly select `_start` (otherwise the first text symbol
-can become ELF entry); dead marker prototypes need cleanup after transport
-override. An unused malloc result was optimized away, so allocator fault tests
-now make it observable through a volatile sink. `bd -C ... export -o` resolves
-the output against the shell cwd; use `env -C REPO bd export ...` for sibling
-exports. A temporary misdirected passive export was regenerated from the
-correct runtime DB before commit; no database or unrelated file was changed.
+Full scripts/gate passes both-major byte reproduction, including relocated
+source builds, all previous native/musl/allocator/console checks, plus new
+sanitizer cases. Receipt: `.tmp/gate-sanitizers.log`.
+ASan rejection logs: `.tmp/sanitizer-tests/asan-link-{18,23}.log`.
+No network, host libc/libm/CRT fallback, push, or cross-repository writes.

@@ -92,6 +92,7 @@ def build(major):
     assert sha(archive) == expected[major], 'compiler-rt digest mismatch'
     (out/sanitizer_archive).write_bytes(archive.read_bytes())
     (out/'COMPILER-RT-COPYRIGHT').write_bytes(archive.with_name('COPYRIGHT').read_bytes())
+    (out/'COMPILER-RT-LICENSE').write_bytes((ROOT/'vendor/compiler-rt/LICENSE').read_bytes())
     sanitizer_support = out/'sanitizer-support.bc'
     run(llvm/'clang', *FLAGS, '-nostdinc', '-isystem', out/'musl-sysroot/include',
         '-fno-stack-protector', '-fno-pie', '-emit-llvm', '-c', 'src/native/sanitizer.c', '-o', sanitizer_support)
@@ -125,7 +126,7 @@ def build(major):
         'sanitizers': {
             'variant': 'ubsan-minimal', 'asan': 'unavailable: hosted compiler-rt ASan does not close',
             'compile_flags': ['-O0', '-fsanitize=undefined', '-fsanitize-minimal-runtime', '-fno-sanitize-recover=all'],
-            'artifacts': {name: sha(out/name) for name in (sanitizer_archive, 'sanitizer-support.bc', 'COMPILER-RT-COPYRIGHT')},
+            'artifacts': {name: sha(out/name) for name in (sanitizer_archive, 'sanitizer-support.bc', 'COMPILER-RT-COPYRIGHT', 'COMPILER-RT-LICENSE')},
             'archive_undefined_imports': sorted(set(line.split()[-1] for line in run(llvm/'llvm-nm', '--undefined-only', archive).splitlines() if ' U ' in line)),
             'provenance': f'offline vendored installed LLVM {major} compiler-rt; Apache-2.0 WITH LLVM-exception; see COMPILER-RT-COPYRIGHT',
         },
@@ -141,7 +142,7 @@ def build(major):
     temporary.replace(out/'bennett-runtimes.bc')
     (out/'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True)+'\n')
     (out/'SHA256SUMS').write_text(''.join(f'{sha(out/name)}  {name}\n'
-                                        for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'sanitizer-support.bc', sanitizer_archive, 'COMPILER-RT-COPYRIGHT', 'manifest.json')))
+                                        for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'sanitizer-support.bc', sanitizer_archive, 'COMPILER-RT-COPYRIGHT', 'COMPILER-RT-LICENSE', 'manifest.json')))
     print(f'LLVM {major}: {manifest["sha256"]}  {out/"bennett-runtimes.bc"}')
 
 if __name__ == '__main__':

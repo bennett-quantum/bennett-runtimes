@@ -122,8 +122,8 @@ limit is the largest heap budget, including shadow stack. A linker relocation
 for the base is supported, as tested with two actual comparison linker scripts.
 The driver must place text/arena/interfaces disjointly and replicate addresses
 in device layout. `__bennett_rt_blk.<f>` is k-byte block identity (§14.9), never
-this table. The existing driver does not yet emit this table or perform the
-support merge; consumer integration remains necessary. No driver code changed.
+this table. The consumer owns the table and support merge under driver cyg.3; this
+repository does not modify driver code.
 
 The native heap maps exactly the configured range using Linux
 MAP_FIXED_NOREPLACE; bad ABI/alignment/overflow, collisions and OS low-address
@@ -160,7 +160,7 @@ libc families remain promised scope under brt-zct/brt-q1k.
 
 Each matching-major publication additionally contains the byte-pinned upstream
 `libclang_rt.ubsan_minimal-x86_64.a`, `sanitizer-support.bc` (native Linux
-SIGABRT implementation of `abort`), and `COMPILER-RT-COPYRIGHT`.
+SIGABRT implementation of `abort`), `COMPILER-RT-COPYRIGHT`, and `COMPILER-RT-LICENSE`.
 `manifest.json` records artifact SHAs, flags and the archive's complete imports:
 `abort`, `strlen`, `write`. The latter two are the existing real musl definitions;
 native `write(2,...)` preserves stderr. No sanitizer handler is substituted.
@@ -213,7 +213,7 @@ acceptance obligation; driver cyg.3 must consume this subset honestly while
 keeping full ASan acceptance outstanding.
 
 `tests/test_sanitizers.py` gates both-major O0 plain and UBSan hashtable (all
-ten golden cases), hello, zero imports/dynamic dependencies, and a deliberately
+ten golden cases), hello under a resolved comparison linker script, zero imports/dynamic dependencies, and a deliberately
 faulty array write: plain is silent, minimal UBSan reports out-of-bounds and
 aborts. It also records real ASan strict-link failures under
 `.tmp/sanitizer-tests/asan-link-M.log`; those are rejection evidence, not an

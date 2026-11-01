@@ -1,3 +1,5 @@
-/* Deliberate global out-of-bounds store, within the mapped backing object. */
-struct { int values[2]; int backing; } storage;
-int main(void) { volatile int index=2; storage.values[index]=7; return 0; }
+/* Deliberate global array OOB. Unlike an intra-struct overwrite, this also
+ * crosses an ASan global redzone when the full ASan port becomes available.
+ * Plain Linux maps the trailing bytes in the .bss page, so no native trap. */
+int values[2];
+int main(void) { volatile int index=2; values[index]=7; return 0; }

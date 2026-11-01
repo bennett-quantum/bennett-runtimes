@@ -371,6 +371,7 @@
     ],
     "artifacts": {
       "COMPILER-RT-COPYRIGHT": "f680b175b51da0be13bd541c8813c9f11b46490a83fd6a1fda403edb1806203d",
+      "COMPILER-RT-LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
       "libclang_rt.ubsan_minimal-x86_64.a": "006cb02eeb8aeda11a20fa6c0d1bdcfadcb59b924be5755f7229dfcdcb8b82d6",
       "sanitizer-support.bc": "5444e22b761e4cf1fa50321dc24c4b0572771298f1edc6a351a2a60aaa19f9ed"
     },
@@ -388,7 +389,7 @@
   "sources": {
     "SPEC_VERSIONS.toml": "8bf88d5b7905d706ca74f3848dc44dccb90f2e5459bb9abd5f027088c0e35489",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
-    "scripts/build.py": "75663169f75e5d6849dc928e83b9d48086dc8ba6799ffbcb011e96288653d53d",
+    "scripts/build.py": "ac43af7b271dce7c3cc988938fd4ef6e996465739ab38250b10f8e3d3298406e",
     "scripts/musl.py": "9a253817064615629b3b2e386caaea56ef84d857a1e0e94cc1cc358c9f338ac8",
     "scripts/native-link": "ca41372a99470a20acbaf1088bdf538e225c560025d5a620264ff45ae7ab55ed",
     "scripts/native-sanitizer-link": "f83164144c2d924feb3e5447284ea0271f07bb9d0d7b8d5c37e826a93a571dc4",
