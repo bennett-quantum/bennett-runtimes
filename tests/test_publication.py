@@ -13,7 +13,7 @@ ARITH = Path(os.environ.get('BENNETT_ARITH_ROOT', ROOT.parent/'bennett-arith'))
 RUNG = CONFORMANCE/'ladder/rung-2'
 TMP = ROOT/'.tmp'/'publication'
 TMP.mkdir(parents=True, exist_ok=True)
-EXPORTS = {'malloc', 'calloc', 'free', 'memset', '__bennett_rt_memset', '__bennett_rt_memmove', '__bennett_rt_alloc'}
+EXPORTS = {'malloc', 'calloc', 'realloc', 'free', 'memset', '__bennett_rt_memset', '__bennett_rt_memmove', '__bennett_rt_alloc'}
 PRIMITIVES = {'__bennett_nz_alloc', '__bennett_nz_free', '__bennett_nz_fault'}
 MARKERS = {'__bennett_qalloc', '__bennett_qfree'}
 GOLDEN = b'''basic 0 0

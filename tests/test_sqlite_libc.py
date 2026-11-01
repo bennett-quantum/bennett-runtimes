@@ -33,7 +33,8 @@ for major in (18,23):
     # Keep frontend vectorisation enabled. Scalarise its fixed vectors at the
     # N21 boundary before the comparison-only memory/fault adapter.
     scalar=TMP/f'scalar-{major}.bc'
-    run(llvm/'opt','-passes=scalarizer','-scalarize-load-store',bc,'-o',scalar)
+    options=['-passes=scalarizer','-scalarize-load-store'] if major==18 else ['-passes=scalarizer<load-store>']
+    run(llvm/'opt',*options,bc,'-o',scalar)
     layout.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 520093696, i64 16384 }, align 8\n')
     run(ROOT/'scripts/native-check-link',major,scalar,exe,layout)
     subprocess.run([exe],check=True,timeout=20)

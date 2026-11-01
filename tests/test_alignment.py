@@ -9,7 +9,7 @@ for major in (18,23):
     clang=f'/usr/lib/llvm-{major}/bin/clang'
     obj=TMP/f'bump-{major}.o'
     subprocess.run([clang,'-O2','-ffreestanding','-fno-builtin','-Dmalloc=runtime_malloc',
-                    '-Dcalloc=runtime_calloc','-Dfree=runtime_free','-c',ROOT/'src/allocator/bump.c','-o',obj],check=True)
+                    '-Dcalloc=runtime_calloc','-Dfree=runtime_free','-Drealloc=runtime_realloc','-c',ROOT/'src/allocator/bump.c','-o',obj],check=True)
     exe=TMP/f'alignment-{major}'
     subprocess.run([clang,'-O2',ROOT/'tests/alignment.c',obj,'-o',exe],check=True)
     for case in ('history','overflow','padding-budget','extent-budget'):

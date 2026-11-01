@@ -29,6 +29,7 @@ void __bennett_nz_free(void *p) {
     __bennett_nz_fault(7);
 }
 void __bennett_rt_memset(void *p, unsigned char c, uint64_t n) { memset(p,c,n); }
+void __bennett_rt_memmove(void *p, const void *s, uint64_t n) { memmove(p,s,n); }
 int main(int argc, char **argv) {
     assert(argc==2);
     memset(heap,0xaa,sizeof heap);
@@ -51,14 +52,16 @@ int main(int argc, char **argv) {
         assert(a==16);
         assert(__bennett_rt_alloc(3)==heap);
         void *p=runtime_malloc(1);
-        assert(p==heap+16 && count==3 && bump==32);
+        assert(p==heap+16 && count==4 && bump==64);
         assert(records[0].requested==3 && records[1].requested==13 && records[2].requested==16);
+        assert(records[3].requested==32); /* explicit ordinary C bookkeeping */
         for (size_t i=0;i<32;i++) assert(heap[i]==0);
         runtime_free(p);
-        assert(!records[2].live && bump==32);
-        assert(runtime_malloc(17)==heap+32 && records[3].requested==32);
-        assert(runtime_malloc(0)==heap+64 && records[4].requested==16);
-        assert(runtime_calloc(0,SIZE_MAX)==heap+80 && records[5].requested==16);
+        assert(!records[2].live && bump==64);
+        assert(runtime_malloc(17)==heap+64 && records[4].requested==32);
+        assert(count==5 && bump==96); /* reuse the live bookkeeping slot */
+        assert(runtime_malloc(0)==heap+96 && records[5].requested==16 && records[6].requested==32);
+        assert(runtime_calloc(0,SIZE_MAX)==heap+144 && records[7].requested==16 && records[8].requested==32);
         /* Undo ordinary free/alloc history; padding has its own record. */
         records[2].live=1;
     }

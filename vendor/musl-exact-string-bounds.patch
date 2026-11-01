@@ -20,3 +20,14 @@
  	typedef size_t __attribute__((__may_alias__)) word;
  	const word *w;
  	for (; (uintptr_t)s % ALIGN; s++)
+--- a/src/string/memchr.c
++++ b/src/string/memchr.c
+@@ -12,7 +12,7 @@
+ {
+ 	const unsigned char *s = src;
+ 	c = (unsigned char)c;
+-#ifdef __GNUC__
++#if defined(__GNUC__) && !defined(BENNETT_EXACT_STRING_BOUNDS)
+ 	for (; ((uintptr_t)s & ALIGN) && n && *s != c; s++, n--);
+ 	if (n && *s != c) {
+ 		typedef size_t __attribute__((__may_alias__)) word;

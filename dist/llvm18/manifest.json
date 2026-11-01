@@ -1,4 +1,10 @@
 {
+  "c_allocator": {
+    "bookkeeping": "explicit ordinary 32-byte allocation per peak simultaneous C allocation; live pool slots reused as data",
+    "history": "payload, padding and bookkeeping charged identically; no payload reuse or record cap",
+    "payload": "max_align_t-rounded, primitive zero fill",
+    "realloc": "always move; copy min(old requested size,new size); free old after copy; zero uses unique malloc(0) policy"
+  },
   "core_extra_flags": [
     "-nostdinc",
     "-isystem <dist>/musl-sysroot/include"
@@ -136,6 +142,7 @@
     "putc",
     "putchar",
     "puts",
+    "realloc",
     "setvbuf",
     "stderr",
     "stdout",
@@ -296,7 +303,7 @@
       "<dist>/musl-sysroot/include"
     ],
     "patches": {
-      "vendor/musl-exact-string-bounds.patch": "d5866977288a632d9a09ca668eb2fd7b1aff8f23737323ae2b1a2e5b7473bf93"
+      "vendor/musl-exact-string-bounds.patch": "c722241e879231ef23fd8c8efcd7c31fd0cfd393dba3958480799058b3606e6f"
     },
     "source_sha256": "a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4",
     "url": "https://musl.libc.org/releases/musl-1.2.5.tar.gz",
@@ -445,6 +452,7 @@
       "putc",
       "putchar",
       "puts",
+      "realloc",
       "setvbuf",
       "stderr",
       "stdout",
@@ -496,7 +504,7 @@
       "preservation": "disable libcall/allocation inference after materialisation",
       "source_definedness": "separate original-input classifier, not inferred from materialised checks"
     },
-    "sha256": "1b402e37eeab983212ac41219f6802d4d289f3aab0b7c669c9ff421663edb0a4",
+    "sha256": "1805250113a324f3f9cb810509663811a55b1ac724b793546a4e20441bde8a30",
     "support_artifact": "musl-sysroot/lib/native-support.bc",
     "support_sha256": "1eb3cdc9ca69914521068cc8e2db86dccfa96a3db225f4adcdb210802296ca80",
     "undefined_imports": [
@@ -542,18 +550,18 @@
     "provenance": "offline vendored installed LLVM 18 compiler-rt; Apache-2.0 WITH LLVM-exception; see COMPILER-RT-COPYRIGHT",
     "variant": "ubsan-minimal"
   },
-  "sha256": "e48855a2f3853bae923ac2973d3fa85da1fdd0ae9305970b5bd041b79be19fcb",
+  "sha256": "8ff7e54057806b92f2bc4469073a699550d9e0fb5a2da93f6962c0e672398662",
   "sources": {
     "SPEC_VERSIONS.toml": "8bf88d5b7905d706ca74f3848dc44dccb90f2e5459bb9abd5f027088c0e35489",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
-    "scripts/build.py": "5c9c616193de237199a481b2d0cfab8267684af115e8d07cc9fb25be854e9828",
+    "scripts/build.py": "07d0d5d096bfb6ca2d95ea997c9eda5375ae7c4346fb8670c867077e834c7678",
     "scripts/musl.py": "7bc49b993c1061bf4783b655d0d2a5abbe46c95a30fbcac1d7a43eb230e1b5db",
     "scripts/native-check": "bb11d8498a8403a415a77910193302b00bb1978d6ee24c0079bab5aa69ab5c2e",
     "scripts/native-check-link": "8c6d30f210f0afc043c500c4be721b41617fead7bed1659260b2493a86e4281e",
     "scripts/native-check.cpp": "d838a9b6d771ba93518ed7368a4969433c9d00feeb6f5b0a0c5766ebe6ced626",
     "scripts/native-link": "ca41372a99470a20acbaf1088bdf538e225c560025d5a620264ff45ae7ab55ed",
     "scripts/native-sanitizer-link": "f83164144c2d924feb3e5447284ea0271f07bb9d0d7b8d5c37e826a93a571dc4",
-    "src/allocator/bump.c": "972c268d9809a83afba5b90f459d3427dfed16704418d43283f256da6b6fd6f3",
+    "src/allocator/bump.c": "21eb7687cfe9748abdb0c6136867f6d63d396c7f45e496207cb4475888c6ceda",
     "src/device/console.c": "dbf1195a7b38ae208836f577156c16f707458a0906b6496421baf9ad8314b761",
     "src/fenv/environment.c": "966b6d1ac4f5da41cae31858c42b3adf5813f10697bff3997ba73419942bcf25",
     "src/libc/memory.c": "f987fad363d7e0ed7361a0ac4d7ebce3c5238e1b278139d8ac8011dfbf65574c",
@@ -567,7 +575,7 @@
     "src/native/start.S": "0aed9d3b81d148d85b13dce454735efee5a2581388052fb6e87c771d0d1ff46f",
     "src/native/start.c": "24ea684a7480798c82651c2bffa3482a4a9e92e175e934c279f977e6b6ee581a",
     "src/native/syscall.c": "d1fa1296ba726c305ebecc41d48bd3bcb9c0e1509f6126e3129580dfe52f045f",
-    "vendor/musl-exact-string-bounds.patch": "d5866977288a632d9a09ca668eb2fd7b1aff8f23737323ae2b1a2e5b7473bf93"
+    "vendor/musl-exact-string-bounds.patch": "c722241e879231ef23fd8c8efcd7c31fd0cfd393dba3958480799058b3606e6f"
   },
   "sysroot": {
     "musl-sysroot/COPYRIGHT": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af",
@@ -789,7 +797,7 @@
     "musl-sysroot/include/wchar.h": "18c5adbb8fe770aeccc0a1721b03352c6a07fb8ea373a6fcdfe88be76ca5e312",
     "musl-sysroot/include/wctype.h": "cfb9a3d564aad013b7bb8d326fd9b01263c87ff73fb69c823e7695b4989fc2e9",
     "musl-sysroot/include/wordexp.h": "f72323c01c310d9a7aabb4ea62e6a20d3f2be8a390173796c100dd85e2915855",
-    "musl-sysroot/lib/bennett-allocator.bc": "3466f9e086d2f8050571a49f96b0558cd50ad5739b59a076f5de65cfe4043ef4",
+    "musl-sysroot/lib/bennett-allocator.bc": "3e36e3ef6732b80a0951711c9caaf90062ed42b56de01f2e0e754e23df4c1080",
     "musl-sysroot/lib/musl/syscall.c": "e23488fdf93d641074178a402c58686ea0003997e3a86cbba80efeed293b9cd8",
     "musl-sysroot/lib/native-support.bc": "1eb3cdc9ca69914521068cc8e2db86dccfa96a3db225f4adcdb210802296ca80",
     "musl-sysroot/lib/native/heap.c": "032a92070abec7e99e80a73cac1160935ddfa66595388235766600d9cb4bede0",

@@ -29,15 +29,15 @@ int main(int argc, char **argv) {
         return 25;
     }
     unsigned char *q = calloc(3, 7);
-    if ((uintptr_t)q != (uintptr_t)p + 32) return 30;
+    if ((uintptr_t)q != (uintptr_t)p + 64) return 30;
     for (size_t i = 0; i < 21; ++i) if (q[i]) return 31;
     free(NULL);
     free(p);
     unsigned char *r = malloc(5);
-    if ((uintptr_t)r != (uintptr_t)q + 32) return 32;
+    if ((uintptr_t)r != (uintptr_t)q + 64) return 32;
     for (size_t i = 0; i < 5; ++i) if (r[i]) return 33;
     unsigned char *z = malloc(0), *z2 = calloc(0, SIZE_MAX);
-    if ((uintptr_t)z2 != (uintptr_t)z + _Alignof(max_align_t)) return 34;
+    if ((uintptr_t)z2 != (uintptr_t)z + _Alignof(max_align_t) + 32) return 34;
     free(z); free(z2); free(q);
     for (size_t i = 0; i < 5; ++i) r[i] = (unsigned char)i;
     __bennett_rt_memmove(r + 1, r, 4);

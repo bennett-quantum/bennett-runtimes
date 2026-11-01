@@ -18,7 +18,7 @@ for major in (18, 23):
     source=TMP/f'allocator-{major}.bc'
     subprocess.run([clang,*flags,ROOT/'tests/allocator.c','-o',source],check=True)
     config=TMP/f'layout-{major}.c'
-    config.write_text('const unsigned long __bennett_rt_native_layout[3]={1,0x19000000,256};\n')
+    config.write_text('const unsigned long __bennett_rt_native_layout[3]={1,0x19000000,512};\n')
     layout=TMP/f'layout-{major}.bc'
     subprocess.run([clang,*flags,config,'-o',layout],check=True)
     subprocess.run([ROOT/'scripts/native-link',str(major),source,exe,layout],check=True)
