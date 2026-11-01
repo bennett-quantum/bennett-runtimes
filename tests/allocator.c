@@ -4,6 +4,7 @@
 extern void *malloc(size_t);
 extern void *calloc(size_t, size_t);
 extern void free(void *);
+extern void *__bennett_rt_alloc(uint64_t);
 extern void __bennett_rt_memset(void *, unsigned char, uint64_t);
 extern void __bennett_rt_memmove(void *, const void *, uint64_t);
 extern void *memset(void *, int, size_t);
@@ -33,10 +34,10 @@ int main(int argc, char **argv) {
     free(NULL);
     free(p);
     unsigned char *r = malloc(5);
-    if ((uintptr_t)r != (uintptr_t)q + 21) return 32; /* no reuse or padding */
+    if ((uintptr_t)r != (uintptr_t)q + 32) return 32;
     for (size_t i = 0; i < 5; ++i) if (r[i]) return 33;
     unsigned char *z = malloc(0), *z2 = calloc(0, SIZE_MAX);
-    if ((uintptr_t)z2 != (uintptr_t)z + 1) return 34;
+    if ((uintptr_t)z2 != (uintptr_t)z + _Alignof(max_align_t)) return 34;
     free(z); free(z2); free(q);
     for (size_t i = 0; i < 5; ++i) r[i] = (unsigned char)i;
     __bennett_rt_memmove(r + 1, r, 4);
@@ -48,5 +49,10 @@ int main(int argc, char **argv) {
     __bennett_rt_memmove(NULL, NULL, 0);
     __bennett_rt_memset(NULL, 0, 0);
     free(r);
+    unsigned char *odd = __bennett_rt_alloc(3);
+    unsigned char *aligned = malloc(1);
+    if ((uintptr_t)aligned != (uintptr_t)odd + _Alignof(max_align_t)) return 39;
+    if ((uintptr_t)aligned % _Alignof(max_align_t)) return 40;
+    free(odd); free(aligned);
     return 0;
 }

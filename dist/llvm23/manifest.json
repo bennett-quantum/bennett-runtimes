@@ -16,6 +16,7 @@
     "__bennett_dev_console_buffer",
     "__bennett_dev_console_n",
     "__bennett_dev_console_write",
+    "__bennett_rt_alloc",
     "__bennett_rt_eh",
     "__bennett_rt_exit",
     "__bennett_rt_memmove",
@@ -233,6 +234,7 @@
       "__bennett_nz_alloc",
       "__bennett_nz_fault",
       "__bennett_nz_free",
+      "__bennett_rt_alloc",
       "__bennett_rt_eh",
       "__bennett_rt_exit",
       "__bennett_rt_memmove",
@@ -348,7 +350,7 @@
       ],
       "symbol": "__bennett_rt_native_layout"
     },
-    "sha256": "b58659c456b8ebb75db5a307860e5ee9d4c18ce277b7d5f510b26b4cd5dbb3ff",
+    "sha256": "b66c5fd1f08ef7f1e414ee5c6f1b9557f60c3976256c2119bdb177ea8b2a4f63",
     "support_artifact": "musl-sysroot/lib/native-support.bc",
     "support_sha256": "d09e2ad33fe17bc353afe74aebed22da8c7caa8dc1127cbaf942add1af894e9f",
     "undefined_imports": [
@@ -385,7 +387,7 @@
     "provenance": "offline vendored installed LLVM 23 compiler-rt; Apache-2.0 WITH LLVM-exception; see COMPILER-RT-COPYRIGHT",
     "variant": "ubsan-minimal"
   },
-  "sha256": "a63f0421e1d40ebfe6bd391ffa9344db0807aa966a03eed8274e225710a54632",
+  "sha256": "bbdef17b6cbb05636ab97276a651705b115f6c5ec9622fb5ff391ba197f0179e",
   "sources": {
     "SPEC_VERSIONS.toml": "8bf88d5b7905d706ca74f3848dc44dccb90f2e5459bb9abd5f027088c0e35489",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
@@ -393,7 +395,7 @@
     "scripts/musl.py": "9a253817064615629b3b2e386caaea56ef84d857a1e0e94cc1cc358c9f338ac8",
     "scripts/native-link": "ca41372a99470a20acbaf1088bdf538e225c560025d5a620264ff45ae7ab55ed",
     "scripts/native-sanitizer-link": "f83164144c2d924feb3e5447284ea0271f07bb9d0d7b8d5c37e826a93a571dc4",
-    "src/allocator/bump.c": "1f0a789e8c35184476c295fb49cd17daaf1a34ef19b2de7bd44e02f2c703b607",
+    "src/allocator/bump.c": "972c268d9809a83afba5b90f459d3427dfed16704418d43283f256da6b6fd6f3",
     "src/device/console.c": "dbf1195a7b38ae208836f577156c16f707458a0906b6496421baf9ad8314b761",
     "src/libc/memory.c": "f987fad363d7e0ed7361a0ac4d7ebce3c5238e1b278139d8ac8011dfbf65574c",
     "src/musl/context.c": "61a8c17e5cb31141344be41a841219c9ab77e39206778d176afe19eff8f6183e",
@@ -626,7 +628,7 @@
     "musl-sysroot/include/wchar.h": "18c5adbb8fe770aeccc0a1721b03352c6a07fb8ea373a6fcdfe88be76ca5e312",
     "musl-sysroot/include/wctype.h": "cfb9a3d564aad013b7bb8d326fd9b01263c87ff73fb69c823e7695b4989fc2e9",
     "musl-sysroot/include/wordexp.h": "f72323c01c310d9a7aabb4ea62e6a20d3f2be8a390173796c100dd85e2915855",
-    "musl-sysroot/lib/bennett-allocator.bc": "fd25d30ad91e92c067143527ed248f47eeb99e82b2d88a06d975839b8040080c",
+    "musl-sysroot/lib/bennett-allocator.bc": "dac0a82cee9714f193b6533491e7a3f7c92814e48ad969ba86e7c2a07657b1ba",
     "musl-sysroot/lib/musl/syscall.c": "b316bc5848bfcfd747721b80469cc4379c36831b6f879bd0484f6e31710cf84f",
     "musl-sysroot/lib/native-support.bc": "d09e2ad33fe17bc353afe74aebed22da8c7caa8dc1127cbaf942add1af894e9f",
     "musl-sysroot/lib/native/heap.c": "398350145df5ae991031a72994f1671fdb6b228522c55f5da527487a6ccb5ac4",
