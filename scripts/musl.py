@@ -8,6 +8,7 @@ import tarfile
 VERSION='1.2.5'
 URL='https://musl.libc.org/releases/musl-1.2.5.tar.gz'
 SHA='a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4'
+PATCHES=['vendor/musl-exact-string-bounds.patch']
 # Explicit closure, including real vfprintf (not just the optimised puts route),
 # wide conversions, stdio flushing and exit handlers. No musl allocator objects.
 FILES='''stdio/printf stdio/vfprintf stdio/puts stdio/fputs stdio/fwrite
@@ -20,6 +21,7 @@ env/getenv thread/pthread_self
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
 string/memmove string/memchr string/strchrnul string/strchr string/memcmp string/strcmp string/strncmp
+string/bcmp string/strspn string/strcspn string/strrchr string/memrchr time/__secs_to_tm
 multibyte/wctomb multibyte/wcrtomb ctype/iswprint math/frexpl math/frexp math/__fpclassifyl math/__signbitl errno/strerror locale/__lctrans locale/__mo_lookup
 '''.split()
 
@@ -29,6 +31,9 @@ def prepare(root, out, scratch):
     with tarfile.open(archive) as tar:
         tar.extractall(scratch, filter='data')
     src=scratch/f'musl-{VERSION}'
+    for patch in PATCHES:
+        subprocess.check_output(['patch','--batch','--forward','--fuzz=0','--no-backup-if-mismatch',
+                                 '-p1','-i',str(root/patch)],cwd=src)
     inc=out/'musl-sysroot/include'
     if inc.exists(): shutil.rmtree(inc)
     shutil.copytree(src/'include',inc)
@@ -60,7 +65,7 @@ def prepare(root, out, scratch):
     (lib/'musl').mkdir(exist_ok=True)
     shutil.copyfile(root/'src/musl/syscall.c',lib/'musl/syscall.c')
     shutil.copyfile(src/'COPYRIGHT',out/'musl-sysroot/COPYRIGHT')
-    flags=['--target=x86_64-unknown-linux-musl','-std=c99','-O2','-flto','-emit-llvm','-ffreestanding','-fno-builtin','-fno-vectorize','-fno-slp-vectorize','-fno-ident','-Wno-deprecated-non-prototype','-Wno-shift-op-parentheses','-fno-stack-protector','-nostdinc','-D_XOPEN_SOURCE=700']
+    flags=['--target=x86_64-unknown-linux-musl','-std=c99','-O2','-flto','-emit-llvm','-ffreestanding','-fno-builtin','-fno-vectorize','-fno-slp-vectorize','-fno-ident','-Wno-deprecated-non-prototype','-Wno-shift-op-parentheses','-fno-stack-protector','-nostdinc','-D_XOPEN_SOURCE=700','-DBENNETT_EXACT_STRING_BOUNDS=1']
     for path in (overlays,src/'arch/x86_64',src/'arch/generic',src/'src/include',src/'src/internal',inc):
         flags+=['-I',str(path)]
     files=[src/f'src/{f}.c' for f in sorted(set(FILES))]+[root/'src/musl/context.c']
