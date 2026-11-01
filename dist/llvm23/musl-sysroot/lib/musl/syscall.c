@@ -37,6 +37,14 @@ long __bennett_rt_syscall(long nr,long a,long b,long c,long d,long e,long f) {
     if (a==1 || a==2) {
         if (nr==1) { /* write */
             if ((unsigned long)c>LONG_MAX) return -22;
+            #ifdef BENNETT_NATIVE_COMPARISON
+            /* Preserve diagnostic stderr (compiler-rt uses musl write(2)). */
+            if (a==2) {
+                long r;
+                do { r=__bennett_rt_native_os(1,a,b,c,0,0,0); } while (r==-4);
+                return r;
+            }
+#endif
             if (c) CONSOLE_WRITE((void *)(uintptr_t)b,c);
             return c;
         }

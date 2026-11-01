@@ -36,3 +36,7 @@ __pycache__/
 !dist/llvm23/bennett-runtimes-native.bc
 !dist/llvm18/musl-sysroot/lib/native-support.bc
 !dist/llvm23/musl-sysroot/lib/native-support.bc
+
+!vendor/compiler-rt/llvm*/libclang_rt.ubsan_minimal-x86_64.a
+!dist/llvm*/libclang_rt.ubsan_minimal-x86_64.a
+!dist/llvm*/sanitizer-support.bc

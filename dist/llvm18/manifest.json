@@ -348,9 +348,9 @@
       ],
       "symbol": "__bennett_rt_native_layout"
     },
-    "sha256": "33fe088ada8fe26e48b5073cd49728e23d7da36d6f541d1b2d047f65dd12569f",
+    "sha256": "9a40f1b1de32a54848a3913e4576e700a260e2d066cf40a16e71a24c3d679dd6",
     "support_artifact": "musl-sysroot/lib/native-support.bc",
-    "support_sha256": "2dc059d487ba0214fe34bd7b90a6bf948c9fae3899eb1b828fad9342bd7641a6",
+    "support_sha256": "5aa89fa079f037369d32aad98b6e95dcb43b169400da6c278eaa87336133f313",
     "undefined_imports": [
       "__bennett_rt_native_layout",
       "__fini_array_end",
@@ -363,21 +363,44 @@
     "__bennett_nz_fault",
     "__bennett_nz_free"
   ],
+  "sanitizers": {
+    "archive_undefined_imports": [
+      "abort",
+      "strlen",
+      "write"
+    ],
+    "artifacts": {
+      "COMPILER-RT-COPYRIGHT": "dc2a171c75ca72818f7f4312602f27cb0e4bf6d010a86e7073a3797cb228ddff",
+      "libclang_rt.ubsan_minimal-x86_64.a": "66e08178e5231422dbe6717cbb0bd427ee4bb678175830ce1064d9d0b50781da",
+      "sanitizer-support.bc": "42e67e298b707090a66b331f47c63916e8364292a5f75a83106c88346d5f9878"
+    },
+    "asan": "unavailable: hosted compiler-rt ASan does not close",
+    "compile_flags": [
+      "-O0",
+      "-fsanitize=undefined",
+      "-fsanitize-minimal-runtime",
+      "-fno-sanitize-recover=all"
+    ],
+    "provenance": "offline vendored installed LLVM 18 compiler-rt; Apache-2.0 WITH LLVM-exception; see COMPILER-RT-COPYRIGHT",
+    "variant": "ubsan-minimal"
+  },
   "sha256": "6c1741c4e511a08a22eff47ed4380aed626557ee66225b38a884edc83e9f319d",
   "sources": {
     "SPEC_VERSIONS.toml": "8bf88d5b7905d706ca74f3848dc44dccb90f2e5459bb9abd5f027088c0e35489",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
-    "scripts/build.py": "3d4d8c3ea941a35e17ee770756136ca1d49f96c0139adedbd366d2f975aa8a63",
+    "scripts/build.py": "75663169f75e5d6849dc928e83b9d48086dc8ba6799ffbcb011e96288653d53d",
     "scripts/musl.py": "9a253817064615629b3b2e386caaea56ef84d857a1e0e94cc1cc358c9f338ac8",
     "scripts/native-link": "ca41372a99470a20acbaf1088bdf538e225c560025d5a620264ff45ae7ab55ed",
+    "scripts/native-sanitizer-link": "f83164144c2d924feb3e5447284ea0271f07bb9d0d7b8d5c37e826a93a571dc4",
     "src/allocator/bump.c": "1f0a789e8c35184476c295fb49cd17daaf1a34ef19b2de7bd44e02f2c703b607",
     "src/device/console.c": "dbf1195a7b38ae208836f577156c16f707458a0906b6496421baf9ad8314b761",
     "src/libc/memory.c": "f987fad363d7e0ed7361a0ac4d7ebce3c5238e1b278139d8ac8011dfbf65574c",
     "src/musl/context.c": "61a8c17e5cb31141344be41a841219c9ab77e39206778d176afe19eff8f6183e",
-    "src/musl/syscall.c": "98e42b43d7364e65856b3cb051414de1c44d68072b225aa11b46ef87ea4a0076",
+    "src/musl/syscall.c": "b316bc5848bfcfd747721b80469cc4379c36831b6f879bd0484f6e31710cf84f",
     "src/native/heap.c": "398350145df5ae991031a72994f1671fdb6b228522c55f5da527487a6ccb5ac4",
     "src/native/layout.h": "60cfc8d2d5523bf74b9b0d4ec7d3e12931c640e29135eb015be6f65d2de03ac7",
     "src/native/os.c": "49a96a25f1f76bc707586902da848256045f40a15ace271a2d43090b58c2ec79",
+    "src/native/sanitizer.c": "913d4e01e78c17656ffd1e1f28609c16c549b14f7529817a2053b0d385f78ea4",
     "src/native/start.S": "0aed9d3b81d148d85b13dce454735efee5a2581388052fb6e87c771d0d1ff46f",
     "src/native/start.c": "09851216685b33264d24cb0951ed1ae688446fc5748ed436af9869a27a0642d8",
     "src/native/syscall.c": "d33d49dec5b3dde5a27ec5d8aca35c93f7f04bd43ea3ad80bfecacdee6328609"
@@ -603,11 +626,12 @@
     "musl-sysroot/include/wctype.h": "cfb9a3d564aad013b7bb8d326fd9b01263c87ff73fb69c823e7695b4989fc2e9",
     "musl-sysroot/include/wordexp.h": "f72323c01c310d9a7aabb4ea62e6a20d3f2be8a390173796c100dd85e2915855",
     "musl-sysroot/lib/bennett-allocator.bc": "7268240072a6ebd88ba27786a311fd12d610e5af7ebccc81606f410ba2a46550",
-    "musl-sysroot/lib/musl/syscall.c": "98e42b43d7364e65856b3cb051414de1c44d68072b225aa11b46ef87ea4a0076",
-    "musl-sysroot/lib/native-support.bc": "2dc059d487ba0214fe34bd7b90a6bf948c9fae3899eb1b828fad9342bd7641a6",
+    "musl-sysroot/lib/musl/syscall.c": "b316bc5848bfcfd747721b80469cc4379c36831b6f879bd0484f6e31710cf84f",
+    "musl-sysroot/lib/native-support.bc": "5aa89fa079f037369d32aad98b6e95dcb43b169400da6c278eaa87336133f313",
     "musl-sysroot/lib/native/heap.c": "398350145df5ae991031a72994f1671fdb6b228522c55f5da527487a6ccb5ac4",
     "musl-sysroot/lib/native/layout.h": "60cfc8d2d5523bf74b9b0d4ec7d3e12931c640e29135eb015be6f65d2de03ac7",
     "musl-sysroot/lib/native/os.c": "49a96a25f1f76bc707586902da848256045f40a15ace271a2d43090b58c2ec79",
+    "musl-sysroot/lib/native/sanitizer.c": "913d4e01e78c17656ffd1e1f28609c16c549b14f7529817a2053b0d385f78ea4",
     "musl-sysroot/lib/native/start.S": "0aed9d3b81d148d85b13dce454735efee5a2581388052fb6e87c771d0d1ff46f",
     "musl-sysroot/lib/native/start.c": "09851216685b33264d24cb0951ed1ae688446fc5748ed436af9869a27a0642d8",
     "musl-sysroot/lib/native/syscall.c": "d33d49dec5b3dde5a27ec5d8aca35c93f7f04bd43ea3ad80bfecacdee6328609",

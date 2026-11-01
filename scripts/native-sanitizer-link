@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Original-input O0 diagnostics only. Never instrument runtime/musl internals.
+set -euo pipefail
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export TMPDIR="$root/.tmp"
+mkdir -p "$TMPDIR"
+if [ "$#" -lt 5 ] || [ "$#" -gt 6 ]; then
+  echo 'usage: native-sanitizer-link 18|23 plain|ubsan-minimal INPUT.bc OUTPUT LAYOUT.bc [COMPARISON.ld]' >&2
+  exit 1
+fi
+major="$1"; variant="$2"; input="$3"; output="$4"; layout="$5"
+case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
+case "$variant" in plain|ubsan-minimal) ;; *) echo "unsupported sanitizer variant: $variant; ASan closure unavailable (see README)" >&2; exit 1;; esac
+dist="$root/dist/llvm$major"
+llvm="/usr/lib/llvm-$major/bin"
+scratch="$(mktemp -d "$TMPDIR/sanitizer-link-XXXXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
+"$llvm/llvm-link" "$input" "$layout" --override="$dist/bennett-runtimes-native.bc" -o "$scratch/native.bc"
+"$llvm/llvm-link" "$scratch/native.bc" "$arith" --only-needed -o "$scratch/closed.bc"
+extra=()
+if [ "$variant" = ubsan-minimal ]; then
+  extra+=("$dist/sanitizer-support.bc" "$dist/libclang_rt.ubsan_minimal-x86_64.a")
+fi
+if [ "$#" -eq 6 ]; then extra+=("-Wl,-T,$6"); fi
+"$llvm/clang" --target=x86_64-unknown-linux-musl -O0 -nostdlib -nostdinc -static -no-pie \
+  -ffreestanding -fno-builtin -fno-sanitize-link-runtime -Wl,-e,_start -Wl,--no-undefined \
+  "$scratch/closed.bc" "${extra[@]}" -o "$output"

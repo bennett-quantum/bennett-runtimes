@@ -84,6 +84,17 @@ def build(major):
     # are identical; native primitive definitions never enter production.
     run(llvm/'llvm-link', *objects, '--override='+str(support), '-o', native)
     run(llvm/'opt', '-passes=strip-dead-prototypes,verify', native, '-o', native)
+    # Offline compiler-rt input is byte-pinned, never selected from host libraries.
+    sanitizer_archive = 'libclang_rt.ubsan_minimal-x86_64.a'
+    archive = ROOT/f'vendor/compiler-rt/llvm{major}'/sanitizer_archive
+    expected = {'18': '66e08178e5231422dbe6717cbb0bd427ee4bb678175830ce1064d9d0b50781da',
+                '23': '006cb02eeb8aeda11a20fa6c0d1bdcfadcb59b924be5755f7229dfcdcb8b82d6'}
+    assert sha(archive) == expected[major], 'compiler-rt digest mismatch'
+    (out/sanitizer_archive).write_bytes(archive.read_bytes())
+    (out/'COMPILER-RT-COPYRIGHT').write_bytes(archive.with_name('COPYRIGHT').read_bytes())
+    sanitizer_support = out/'sanitizer-support.bc'
+    run(llvm/'clang', *FLAGS, '-nostdinc', '-isystem', out/'musl-sysroot/include',
+        '-fno-stack-protector', '-fno-pie', '-emit-llvm', '-c', 'src/native/sanitizer.c', '-o', sanitizer_support)
     artifact = scratch/'publish.bc'
     run(llvm/'llvm-link', *objects, '-o', artifact)
     run(llvm/'opt', '-passes=verify', '-disable-output', artifact)
@@ -111,11 +122,18 @@ def build(major):
                        'allocation_records': 'heap_limit_max (max(n,1) consumes at least one byte)'},
             'extra_flags': ['-nostdinc', '-isystem <dist>/musl-sysroot/include', '-fno-stack-protector', '-fno-pie'],
         },
+        'sanitizers': {
+            'variant': 'ubsan-minimal', 'asan': 'unavailable: hosted compiler-rt ASan does not close',
+            'compile_flags': ['-O0', '-fsanitize=undefined', '-fsanitize-minimal-runtime', '-fno-sanitize-recover=all'],
+            'artifacts': {name: sha(out/name) for name in (sanitizer_archive, 'sanitizer-support.bc', 'COMPILER-RT-COPYRIGHT')},
+            'archive_undefined_imports': sorted(set(line.split()[-1] for line in run(llvm/'llvm-nm', '--undefined-only', archive).splitlines() if ' U ' in line)),
+            'provenance': f'offline vendored installed LLVM {major} compiler-rt; Apache-2.0 WITH LLVM-exception; see COMPILER-RT-COPYRIGHT',
+        },
         'sysroot': {str(p.relative_to(out)): sha(p) for p in sorted((out/'musl-sysroot').rglob('*')) if p.is_file()},
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'
@@ -123,7 +141,7 @@ def build(major):
     temporary.replace(out/'bennett-runtimes.bc')
     (out/'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True)+'\n')
     (out/'SHA256SUMS').write_text(''.join(f'{sha(out/name)}  {name}\n'
-                                        for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'manifest.json')))
+                                        for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'sanitizer-support.bc', sanitizer_archive, 'COMPILER-RT-COPYRIGHT', 'manifest.json')))
     print(f'LLVM {major}: {manifest["sha256"]}  {out/"bennett-runtimes.bc"}')
 
 if __name__ == '__main__':

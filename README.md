@@ -142,8 +142,8 @@ bound buffer/capacity/truncation model. Arbitrary syscalls never pass to Linux.
 Dialect **b-dialect-spec-0na** records both readings of the §3.1 native primitive
 exception/configuration ownership and §19.5 transport. This implementation
 follows the explicit native-comparison requirement with production primitives
-left undefined. ASan/UBSan runtime closure remains tracked in brt-nuu.1 (brt-nuu stays open); this
-publication does not silently link hosted sanitizer libraries. The driver also
+left undefined. The UBSan minimal subset below closes brt-nuu.1; full freestanding ASan remains
+tracked in brt-nuu.2 (brt-nuu stays open). No hosted library fallback is used. The driver also
 continues to own §17.7 division checks and complete shared layout/launch.
 
 The syscall bridge maps stdout/stderr write/writev to the **undefined** console
@@ -155,3 +155,67 @@ b-dialect-spec-lbq records both readings of startup/syscall framing/tape details
 the implementation follows the spec's tier distinction. No unsupported-symbol
 trap stubs replace musl implementations. Remaining VFS/device/thread and broader
 libc families remain promised scope under brt-zct/brt-q1k.
+
+### O0 diagnostic: compiler-rt UBSan minimal subset (LLVM 18 and 23)
+
+Each matching-major publication additionally contains the byte-pinned upstream
+`libclang_rt.ubsan_minimal-x86_64.a`, `sanitizer-support.bc` (native Linux
+SIGABRT implementation of `abort`), and `COMPILER-RT-COPYRIGHT`.
+`manifest.json` records artifact SHAs, flags and the archive's complete imports:
+`abort`, `strlen`, `write`. The latter two are the existing real musl definitions;
+native `write(2,...)` preserves stderr. No sanitizer handler is substituted.
+Vendored archives are copied from the locally installed matching compiler-rt,
+verified against fixed SHA-256s offline; no build consults host runtime libraries.
+
+Instrument **original input translation units**, including main, before linking
+un-instrumented published runtimes. These diagnostics are a separate §17.7
+baseline; do not instrument or replace already materialised device functions.
+For each major M, compile each input with the matching Clang:
+
+```sh
+clang --target=x86_64-unknown-linux-musl -nostdinc \
+  -isystem dist/llvmM/musl-sysroot/include -O0 -ffreestanding -fno-builtin \
+  -fno-pie -fsanitize=undefined -fsanitize-minimal-runtime \
+  -fno-sanitize-recover=all -emit-llvm -c input.c -o input.bc
+llvm-link input.bc main.bc -o original-instrumented.bc
+scripts/native-sanitizer-link M ubsan-minimal original-instrumented.bc \
+  diagnostic driver-layout.bc comparison.ld
+```
+
+The exact order implemented by that helper is:
+
+1. `llvm-link original-instrumented.bc driver-layout.bc
+   --override=bennett-runtimes-native.bc -o native.bc` (retain startup/musl).
+2. `llvm-link native.bc bennett-arith.bc --only-needed -o closed.bc`.
+3. Matching Clang `--target=x86_64-unknown-linux-musl -O0 -nostdlib -nostdinc
+   -static -no-pie -ffreestanding -fno-builtin -fno-sanitize-link-runtime
+   -Wl,-e,_start -Wl,--no-undefined closed.bc sanitizer-support.bc
+   libclang_rt.ubsan_minimal-x86_64.a -Wl,-T,comparison.ld -o diagnostic`.
+
+The layout table and linker script have the same resolved §19.5 contract as the
+O2 baseline above; there is no sanitizer heap default. The helper's `plain`
+variant omits sanitizer support/archive for an O0 control. It rejects `asan`
+and other unsupported variants loudly. Never label this row `O0-ASan-UBSan`.
+Minimal UBSan retains compiler-generated undefined-behavior checks with terse
+`ubsan: ...` reports and fatal SIGABRT; it lacks full source/type diagnostics,
+vptr checking, ASan heap/stack/global redzones and use-after-free detection.
+Only user inputs are instrumented; published musl/allocator internals are not.
+An array-index bounds check is not proof of general memory safety.
+
+**ASan is unavailable under this publication's strict link.** Actual pinned
+compiler-rt probes on both majors fail: `AsanDoesNotSupportStaticLinkage`
+requires `_DYNAMIC`, and loader APIs (`dlsym`, `dlvsym`, `dladdr`), pthread
+TLS/stack/atfork and additional libc/libm symbols remain unresolved. Adding
+those names as stubs would not provide shadow setup, constructors, allocator
+poisoning or working interceptors. No ASan runtime artifact or passing ASan
+execution is claimed. brt-nuu.2 retains the complete ASan port and memory-fault
+acceptance obligation; driver cyg.3 must consume this subset honestly while
+keeping full ASan acceptance outstanding.
+
+`tests/test_sanitizers.py` gates both-major O0 plain and UBSan hashtable (all
+ten golden cases), hello, zero imports/dynamic dependencies, and a deliberately
+faulty array write: plain is silent, minimal UBSan reports out-of-bounds and
+aborts. It also records real ASan strict-link failures under
+`.tmp/sanitizer-tests/asan-link-M.log`; those are rejection evidence, not an
+ASan-positive faulty-fixture result. Full same-path and relocated-source byte
+reproduction includes the new artifacts and manifests.
