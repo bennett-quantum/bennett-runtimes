@@ -21,6 +21,7 @@ python3 -I "$root/tests/test_musl.py"
 python3 -I "$root/tests/test_native.py"
 python3 -I "$root/tests/test_checked_native.py"
 python3 -I "$root/tests/test_fenv.py"
+python3 -I "$root/tests/test_process.py"
 python3 -I "$root/tests/test_console.py"
 python3 -I "$root/tests/test_sanitizers.py"
 echo 'gate: LLVM 18/23 publications reproduced; runtime and corpus closure PASS'

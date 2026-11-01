@@ -123,6 +123,11 @@ def build(major):
         'fenv': {'symbol': '__bennett_rt_fenv', 'llvm_type': '{ i32, i32 }', 'alignment': 4,
                  'field_offsets': {'round': 0, 'flags': 4}, 'initial': [0,0],
                  'round_codes': [0,1,2,3,4], 'ieee_flag_bits': [1,2,4,8,16]},
+        'process_context': {'prepare': '__bennett_rt_prepare_process',
+                            'signature': 'void (i32 argc, ptr argv, ptr envp)',
+                            'profile': 'fresh static images, single thread, C locale, page size 4096',
+                            'native_start': 'register input objects; prepare; exit(main(argc, argv, environ))',
+                            'device_entry': 'driver prepares vectors and invokes preparation before entry; no Linux CRT/TLS/auxv'},
         'musl': {'version': musl.VERSION, 'url': musl.URL, 'source_sha256': musl.SHA, 'files': sorted(set(musl.FILES)), 'flags': [re.sub(str(scratch), '<build>', re.sub(str(out), '<dist>', f)) for f in musl_flags]},
         'native': {
             'artifact': 'bennett-runtimes-native.bc', 'sha256': sha(native),

@@ -16,9 +16,10 @@ stdio/__stdout_write stdio/__stdio_close stdio/__stdio_seek stdio/stdout
 stdio/stderr stdio/__stdio_exit stdio/__lockfile stdio/ofl stdio/fflush
 stdio/setvbuf stdio/putc stdio/fputc stdio/putchar stdio/__lockfile
 exit/exit exit/_Exit exit/atexit unistd/write unistd/writev unistd/lseek
+env/getenv thread/pthread_self
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
-string/memmove string/memchr string/strchrnul string/strchr string/memcmp string/strcmp
+string/memmove string/memchr string/strchrnul string/strchr string/memcmp string/strcmp string/strncmp
 multibyte/wctomb multibyte/wcrtomb ctype/iswprint math/frexpl math/frexp math/__fpclassifyl math/__signbitl errno/strerror locale/__lctrans locale/__mo_lookup
 '''.split()
 

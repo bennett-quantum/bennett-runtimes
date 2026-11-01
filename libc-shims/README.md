@@ -69,3 +69,20 @@ C encodings to published round codes 0..4 and IEEE bits 1,2,4,8,16. These
 tests establish shared-state layout and behavior, not arith's full-domain
 accuracy or exact-flag obligations.
 
+Static entry preparation is `void __bennett_rt_prepare_process(int argc,
+char **argv, char **envp)`. The caller supplies fresh linked static images and
+nonnull, null-terminated vectors, with `argv[argc] == NULL` and nonnull strings
+for all earlier arguments. Preparation installs `environ` and musl/GNU program
+names (basename after the last slash), resets errno and fenv, and establishes
+the static main thread, C locale, and 4096-byte libc page size. It performs no
+Linux CRT, TLS, auxv, or device operation. The driver invokes preparation before
+the whole-program entry; stdio objects and exit-handler lists begin at their
+linked static images. The helper does not reset descriptor-bound model state.
+
+Comparison `_start` registers its Linux input objects, calls preparation, then
+uses `exit(main(argc, argv, environ))`. A main return and explicit `exit` run
+handlers in reverse registration order and flush buffered stdio once;
+`_Exit` runs neither. Device entry uses the published normalised exit/EH path
+and inherited ISA effect tape. Native/context and store-history tests do not
+establish full R execution under the repo's ISA 0.8 pin (BLK-5).
+

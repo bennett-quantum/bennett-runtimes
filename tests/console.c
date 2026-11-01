@@ -19,7 +19,11 @@ static long os(long nr,long a,long b,long c) {
     __asm__ volatile("syscall" : "=a"(result) : "a"(nr),"D"(a),"S"(b),"d"(c) : "rcx","r11","memory");
     return result;
 }
-void __bennett_nz_fault(uint64_t code) { os(60,100+code,0,0); __builtin_trap(); }
+static void (*fault_check)(uint64_t);
+void __bennett_nz_fault(uint64_t code) {
+    if (fault_check) fault_check(code);
+    os(60,100+code,0,0); __builtin_trap();
+}
 static void copy(void *d,const void *s,size_t n) {
     for(size_t i=0;i<n;++i) ((unsigned char *)d)[i]=((const unsigned char *)s)[i];
 }
@@ -30,6 +34,12 @@ static int equal(const void *a,const void *b,size_t n) {
 struct undo { void *p; size_t n; unsigned char old[256]; };
 static struct undo history[4096];
 static size_t history_n;
+static unsigned char *capacity_buffer;
+static unsigned char capacity_before[64];
+static void capacity_fault(uint64_t code) {
+    if (code!=2 || __bennett_dev_console_n!=0 || history_n ||
+        !equal(capacity_buffer,capacity_before,sizeof capacity_before)) os(60,99,0,0);
+}
 void test_record(void *p,uint64_t n) {
     if(n>256 || history_n==4096) __bennett_nz_fault(2);
     history[history_n].p=p; history[history_n].n=n;
@@ -62,7 +72,11 @@ int main(int argc,char **argv) {
     CHECK(setvbuf(stdout,0,_IONBF,0)==0);
     if(argc>1) {
         if(argv[1][0]=='u') { __bennett_dev_console_bound=0; __bennett_dev_console_write(0,0); }
-        if(argv[1][0]=='a') { __bennett_dev_console_action=1; __bennett_dev_console_write((void *)1,65); }
+        if(argv[1][0]=='a') {
+            capacity_buffer=buffer; copy(capacity_before,buffer,sizeof buffer);
+            fault_check=capacity_fault;
+            __bennett_dev_console_action=1; __bennett_dev_console_write((void *)1,65);
+        }
         if(argv[1][0]=='m') __bennett_rt_syscall(999,0,0,0,0,0,0);
         return 99;
     }
@@ -86,6 +100,11 @@ int main(int argc,char **argv) {
     CHECK(write(1,"!",1)==1 && buffer[0]=='!'); reverse();
     CHECK(write(1,"",0)==0 && history_n==0);
     errno=0; CHECK(writev(1,v,-1)==-1 && errno==EINVAL && history_n==0);
+    CHECK(writev(1,(void *)1,1025)==-1 && errno==EINVAL && history_n==0);
+    CHECK(writev(1,0,1)==-1 && errno==EFAULT && history_n==0);
+    CHECK(writev(1,0,0)==0 && history_n==0);
+    static struct iovec empty_vectors[1024];
+    CHECK(writev(1,empty_vectors,1024)==0 && history_n==0);
     v[0].iov_len=LONG_MAX; v[2].iov_len=1;
     CHECK(writev(1,v,3)==-1 && errno==EINVAL && history_n==0);
     CHECK(__bennett_rt_syscall(16,1,0x5413,0,0,0,0)==-25 && history_n==0);
