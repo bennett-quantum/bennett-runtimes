@@ -52,3 +52,20 @@ classification remains a separate original-input sanitizer/reference build;
 these materialised checks do not recover undefined operations erased by
 source optimisation or claim the deferred full ASan port.
 
+The floating-point environment is one runtime definition of
+`__bennett_rt_fenv`, LLVM `{ i32, i32 }`, align 4, with round at offset 0 and
+flags at offset 4, initially zero. Arith declares and updates the same object.
+`__bennett_rt_fenv_get_round/get_flags/get_env`, corresponding `set_*` helpers,
+and `reset/reset_round/reset_flags` expose its state as ordinary bitcode.
+The packed environment has round in the low 32 bits and flags in the high 32.
+Invalid helper state faults with code 4 before either field changes.
+
+The standard C `fe*` functions use that object, including snapshots,
+hold/update, and `FE_DFL_ENV`. The target header retains musl's public rounding
+and exception encodings and adds `FE_TONEARESTAWAY` (0x1000). `FE_ALL_EXCEPT`
+is 61, the five IEEE exceptions implemented by the deterministic profile;
+the x87 denormal-operand extension is excluded. The runtime translates these
+C encodings to published round codes 0..4 and IEEE bits 1,2,4,8,16. These
+tests establish shared-state layout and behavior, not arith's full-domain
+accuracy or exact-flag obligations.
+

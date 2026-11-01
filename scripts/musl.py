@@ -38,6 +38,13 @@ def prepare(root, out, scratch):
     syscalls=(src/'arch/x86_64/bits/syscall.h.in').read_text()
     (inc/'bits/syscall.h').write_text(syscalls+syscalls.replace('__NR_','SYS_'))
     for p in inc.rglob('*.in'): p.unlink()
+    # The soft-float profile supports the five IEEE flags, with inherited musl
+    # C encodings, plus the dialect's fifth rounding mode. There is no x87
+    # denormal-operand exception in the published deterministic environment.
+    fenv=inc/'bits/fenv.h'
+    text=fenv.read_text().replace('#define FE_ALL_EXCEPT 63','#define FE_ALL_EXCEPT 61')
+    assert '#define FE_ALL_EXCEPT 61' in text
+    fenv.write_text(text+'\n#define FE_TONEARESTAWAY 0x1000\n')
     overlays=scratch/'overlays'; overlays.mkdir(exist_ok=True)
     (overlays/'pthread_arch.h').write_text('extern void *__bennett_rt_thread_pointer(void);\nstatic inline uintptr_t __get_tp(void) { return (uintptr_t)__bennett_rt_thread_pointer(); }\n#define MC_PC gregs[REG_RIP]\n')
     syscall='extern long __bennett_rt_syscall(long,long,long,long,long,long,long);\n#define __SYSCALL_LL_E(x) (x)\n#define __SYSCALL_LL_O(x) (x)\n'

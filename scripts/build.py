@@ -12,7 +12,7 @@ musl = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/device/console.c', 'src/musl/syscall.c']
+SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/musl/syscall.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
@@ -32,13 +32,21 @@ def build(major):
     out.mkdir(parents=True, exist_ok=True)
     scratch = ROOT/'.tmp'/f'build-{major}'
     scratch.mkdir(parents=True, exist_ok=True)
+    files, musl_flags = musl.prepare(ROOT, out, scratch)
     objects = []
     for source in SOURCES:
         ll = scratch/(Path(source).stem+'.ll')
-        run(llvm/'clang', *FLAGS, '-S', '-emit-llvm', source, '-o', ll)
+        run(llvm/'clang', *FLAGS, '-nostdinc', '-isystem', out/'musl-sysroot/include',
+            '-S', '-emit-llvm', source, '-o', ll)
         text = ll.read_text()
         text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
         text = re.sub(r'^source_filename = .*', f'source_filename = "{source}"', text, flags=re.M)
+        if source=='src/fenv/environment.c':
+            # C names its record type. Publish the literal LLVM object type
+            # §13.5 and arith declare, retaining the same checked C layout.
+            text, count = re.subn(r'(@__bennett_rt_fenv = .*?global )%struct.bennett_fenv( zeroinitializer, section "\.data\.__bennett_rt_fenv", align 4)',
+                                  r'\1{ i32, i32 }\2',text)
+            assert count==1, 'missing canonical fenv definition'
         # Clang C has no source attribute for LLVM allockind. §5.1 requires it;
         # add only alloc (NOT uninitialized) and allocsize to the two definitions.
         for name, indices in [('malloc', '0'), ('calloc', '0,1')]:
@@ -51,7 +59,6 @@ def build(major):
         objects.append(bc)
     core = scratch/'allocator.bc'
     run(llvm/'llvm-link', *objects[:2], '-o', core)
-    files, musl_flags = musl.prepare(ROOT, out, scratch)
     for i, source in enumerate(files):
         ll = scratch/f'musl-{i}.ll'
         run(llvm/'clang', *musl_flags, '-S', source.relative_to(ROOT), '-o', ll)
@@ -112,6 +119,10 @@ def build(major):
         'undefined_imports': sorted(line.split()[-1] for line in run(llvm/'llvm-nm', '--undefined-only', artifact).splitlines() if line.split()),
         'primitive_imports': ['__bennett_nz_alloc', '__bennett_nz_fault', '__bennett_nz_free'],
         'flags': FLAGS,
+        'core_extra_flags': ['-nostdinc', '-isystem <dist>/musl-sysroot/include'],
+        'fenv': {'symbol': '__bennett_rt_fenv', 'llvm_type': '{ i32, i32 }', 'alignment': 4,
+                 'field_offsets': {'round': 0, 'flags': 4}, 'initial': [0,0],
+                 'round_codes': [0,1,2,3,4], 'ieee_flag_bits': [1,2,4,8,16]},
         'musl': {'version': musl.VERSION, 'url': musl.URL, 'source_sha256': musl.SHA, 'files': sorted(set(musl.FILES)), 'flags': [re.sub(str(scratch), '<build>', re.sub(str(out), '<dist>', f)) for f in musl_flags]},
         'native': {
             'artifact': 'bennett-runtimes-native.bc', 'sha256': sha(native),
