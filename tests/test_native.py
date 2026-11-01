@@ -21,7 +21,8 @@ for m in (18,23):
     manifest=json.loads((dist/'manifest.json').read_text())['native']
     assert manifest['sha256']==hashlib.sha256(native.read_bytes()).hexdigest()
     assert {'_start','printf','puts','write','__bennett_nz_alloc','__bennett_nz_free','__bennett_nz_fault','__bennett_rt_native_console_write'} <= set(manifest['exports'])
-    assert set(manifest['undefined_imports']) <= {'main','__bennett_rt_native_layout','__fini_array_start','__fini_array_end'}
+    assert set(manifest['undefined_imports']) <= {'main','__bennett_rt_native_layout','__fini_array_start','__fini_array_end',
+                                               '__bennett_rt_native_objects','__bennett_rt_native_object_count'}
     assert '__bennett_rt_native_layout' in manifest['undefined_imports'], 'layout must never default'
     ir=run(llvm/'llvm-dis',native,'-o','-').decode()
     assert 'define' in ir and '__bennett_effect_' not in ir, 'native must not define or import markers'
@@ -88,7 +89,18 @@ SECTIONS {{
         exe=TMP/f'primitives-{m}'
         run(ROOT/'scripts/native-link',m,source,exe,layout)
         result=subprocess.run([exe],capture_output=True,timeout=10)
-        assert result.returncode==-4 and result.stderr==f'bennett runtime fault {code}\n'.encode(),(m,version,base,limit,result)
+        if code==7: # invalid layout or occupied address is host setup failure
+            assert result.returncode==125 and result.stderr.startswith(b'bennett infrastructure failure: '),(m,version,base,limit,result)
+        else:
+            assert result.returncode==-4 and result.stderr==f'bennett runtime fault {code}\n'.encode(),(m,version,base,limit,result)
+    # The heap fits but its required all-history bookkeeping cannot be mapped.
+    # This is not a dialect budget-heap outcome.
+    config.write_text('const unsigned long __bennett_rt_native_layout[3]={1,0x1c000000,67108864};\n')
+    run(llvm/'clang',*flags,'-emit-llvm','-c',config,'-o',layout)
+    run(ROOT/'scripts/native-link',m,source,exe,layout)
+    def constrained(): resource.setrlimit(resource.RLIMIT_AS,(128*1024*1024,128*1024*1024))
+    result=subprocess.run([exe],capture_output=True,timeout=10,preexec_fn=constrained)
+    assert result.returncode==125 and result.stderr==b'bennett infrastructure failure: allocation history mapping\n',result
     for arg,code in [('f',18446744073709551615),('s',8)]:
         result=subprocess.run([exe,arg],capture_output=True,timeout=10)
         assert result.returncode==-4 and result.stderr==f'bennett runtime fault {code}\n'.encode(),result

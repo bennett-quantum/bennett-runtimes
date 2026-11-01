@@ -38,8 +38,10 @@ long __bennett_rt_syscall(long nr,long a,long b,long c,long d,long e,long f) {
         if (nr==1) { /* write */
             if ((unsigned long)c>LONG_MAX) return -22;
             #ifdef BENNETT_NATIVE_COMPARISON
+            if (__bennett_rt_native_objects)
+                __bennett_rt_native_check((void *)(uintptr_t)b,c);
             /* Preserve diagnostic stderr (compiler-rt uses musl write(2)). */
-            if (a==2) {
+            if (a==2 && !__bennett_rt_native_objects) {
                 long r;
                 do { r=__bennett_rt_native_os(1,a,b,c,0,0,0); } while (r==-4);
                 return r;
@@ -51,6 +53,10 @@ long __bennett_rt_syscall(long nr,long a,long b,long c,long d,long e,long f) {
         if (nr==20) { /* writev: validate aggregate before first effect */
             if ((unsigned long)c>1024) return -22;
             if (c && !b) return -14;
+#ifdef BENNETT_NATIVE_COMPARISON
+            if (__bennett_rt_native_objects)
+                __bennett_rt_native_check((void *)(uintptr_t)b,c*sizeof(struct iovec));
+#endif
             const struct iovec *v=(const void *)(uintptr_t)b;
             size_t total=0;
             for (long i=0;i<c;++i) {

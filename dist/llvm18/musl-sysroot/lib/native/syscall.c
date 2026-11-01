@@ -7,6 +7,7 @@
  * using the unchanged ordinary __bennett_dev_console_write buffer model.
  * Do not define an effect marker or route arbitrary syscalls to Linux. */
 void __bennett_rt_native_console_write(const void *p, uint64_t len) {
+    if (__bennett_rt_native_objects) __bennett_rt_native_check(p,len);
     if (len && !p) __bennett_nz_fault(7);
     const unsigned char *bytes=p;
     while (len) {

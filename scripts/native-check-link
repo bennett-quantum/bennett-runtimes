@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Materialised comparison adapter. Original-input classification is separate.
+set -euo pipefail
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export TMPDIR="${TMPDIR:-$root/.tmp/sol-runtimes-queue/tmp}"
+if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
+  echo 'usage: native-check-link 18|23 MATERIALISED.bc OUTPUT LAYOUT.bc [COMPARISON.ld]' >&2
+  exit 1
+fi
+major="$1"; input="$2"; output="$3"; layout="$4"
+case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
+llvm="/usr/lib/llvm-$major/bin"; dist="$root/dist/llvm$major"
+mkdir -p "$TMPDIR"
+scratch="$(mktemp -d "$TMPDIR/checked-link-XXXXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
+# Retain libc codegen/exit closure while preserving every materialised body.
+"$llvm/llvm-link" "$dist/bennett-runtimes.bc" --override="$input" "$layout" -o "$scratch/closure.bc"
+"$llvm/llvm-link" "$scratch/closure.bc" "$arith" --only-needed -o "$scratch/materialised.bc"
+"$root/scripts/native-check" "$major" "$scratch/materialised.bc" "$scratch/checked.bc"
+# Native primitives/start/transport are introduced only AFTER instrumentation.
+"$llvm/llvm-link" "$scratch/checked.bc" --override="$dist/musl-sysroot/lib/native-support.bc" -o "$scratch/native.bc"
+extra=()
+if [ "$#" -eq 5 ]; then extra+=("-Wl,-T,$5"); fi
+"$llvm/clang" --target=x86_64-unknown-linux-musl -O2 -nostdlib -nostdinc -static -no-pie \
+  -ffreestanding -fno-builtin -Wl,-e,_start -Wl,--no-undefined \
+  "$scratch/native.bc" "${extra[@]}" -o "$output"

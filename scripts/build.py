@@ -121,6 +121,13 @@ def build(major):
             'layout': {'symbol': '__bennett_rt_native_layout', 'abi_version': 1,
                        'fields': ['abi_version:u64', 'heap_base:u64', 'heap_limit_max:u64'],
                        'allocation_records': 'heap_limit_max (max(n,1) consumes at least one byte)'},
+            'materialised_checks': {
+                'adapter': 'scripts/native-check', 'link_adapter': 'scripts/native-check-link',
+                'coverage': ['live-object loads/stores', 'memory-function ranges', 'invalid/double free',
+                             'division/remainder zero and signed overflow', 'explicit fault/unreachable'],
+                'infrastructure_exit_status': 125,
+                'source_definedness': 'separate original-input classifier, not inferred from materialised checks',
+            },
             'extra_flags': ['-nostdinc', '-isystem <dist>/musl-sysroot/include', '-fno-stack-protector', '-fno-pie'],
         },
         'sanitizers': {
@@ -134,7 +141,7 @@ def build(major):
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'

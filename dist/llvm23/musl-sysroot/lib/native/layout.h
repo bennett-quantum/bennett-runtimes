@@ -13,4 +13,10 @@ struct bennett_native_layout {
 extern const struct bennett_native_layout __bennett_rt_native_layout;
 long __bennett_rt_native_os(long,long,long,long,long,long,long);
 _Noreturn void __bennett_nz_fault(uint64_t);
+_Noreturn void __bennett_rt_native_infrastructure(const char *);
+struct bennett_native_object { const void *base; uint64_t size; };
+extern const struct bennett_native_object __bennett_rt_native_objects[] __attribute__((weak));
+extern const uint64_t __bennett_rt_native_object_count __attribute__((weak));
+void __bennett_rt_native_check(const void *, uint64_t);
+void __bennett_rt_native_inputs(int, char **, char **);
 #endif
