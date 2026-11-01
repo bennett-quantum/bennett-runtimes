@@ -33,6 +33,9 @@ output; producer inputs, region identities and ISA mapping keep the original
 bytes. `scripts/native-check-link 18|23 MATERIALISED.bc OUTPUT LAYOUT.bc
 [COMPARISON.ld]` supplies the standalone strict static link. It preserves
 materialised definitions and adds the major-matched freestanding libc closure.
+The checked output disables builtin/libcall and allocator inference so code
+generation cannot replace a materialised libc body or delete allocation
+history and its possible faults. Production allocator annotations are retained.
 
 The checks use individual global objects and exact live primitive heap
 records, including zero-size records, and preflight complete memcpy-family

@@ -76,6 +76,10 @@ int main(int argc, char **argv) {
     F.removeFnAttr(Attribute::Memory);
     F.removeFnAttr(Attribute::Speculatable);
     F.removeFnAttr(Attribute::WillReturn);
+    F.removeFnAttr(Attribute::AllocKind);
+    F.removeFnAttr(Attribute::AllocSize);
+    F.removeFnAttr(Attribute::NoFree);
+    F.addFnAttr("no-builtins");
     Value *mark=nullptr;
     if (hasAlloca) {
       IRBuilder<> B(&*F.getEntryBlock().getFirstInsertionPt());
@@ -117,8 +121,15 @@ int main(int argc, char **argv) {
         call->removeFnAttr(Attribute::Memory);
         call->removeFnAttr(Attribute::Speculatable);
         call->removeFnAttr(Attribute::WillReturn);
+        call->removeFnAttr(Attribute::AllocKind);
+        call->removeFnAttr(Attribute::AllocSize);
+        call->removeFnAttr(Attribute::NoFree);
         call->setTailCallKind(CallInst::TCK_None);
         auto *callee=call->getCalledFunction();
+        // LLVM's libcall simplifier otherwise replaces even a defined strlen
+        // or removes unused malloc calls, discarding materialised faults and
+        // allocation history. Those are ordinary functions at this boundary.
+        if (!callee || !callee->isIntrinsic()) call->addFnAttr(Attribute::NoBuiltin);
         if (!callee) continue; // indirect callees' bodies have the same checks
         auto name=callee->getName();
         if (name=="llvm.trap" || name=="llvm.debugtrap") {

@@ -24,6 +24,7 @@ _Noreturn void __bennett_rt_native_infrastructure(const char *message) {
 /* Preserve arbitrary fault codes in a stable decimal diagnostic, then trap.
  * Neither musl nor the console model is called on a failing path. */
 _Noreturn void __bennett_nz_fault(uint64_t code) {
+    if (!code) code=4; /* ISA effective cause; zero never denotes a fault code */
     char text[64] = "bennett runtime fault ";
     char digits[20]; size_t n=0, len=22;
     do { digits[n++]=(char)('0'+code%10); code/=10; } while(code);

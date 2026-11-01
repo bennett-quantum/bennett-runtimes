@@ -125,6 +125,7 @@ def build(major):
                 'adapter': 'scripts/native-check', 'link_adapter': 'scripts/native-check-link',
                 'coverage': ['live-object loads/stores', 'memory-function ranges', 'invalid/double free',
                              'division/remainder zero and signed overflow', 'explicit fault/unreachable'],
+                'preservation': 'disable libcall/allocation inference after materialisation',
                 'infrastructure_exit_status': 125,
                 'source_definedness': 'separate original-input classifier, not inferred from materialised checks',
             },

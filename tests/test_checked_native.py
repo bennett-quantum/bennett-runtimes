@@ -36,6 +36,8 @@ CASES={
     'empty-ranges': ('call void @__bennett_rt_memmove(ptr null, ptr null, i64 0)',0),
     'writev-prefix': ('%r = call i64 @__bennett_rt_syscall(i64 20, i64 1, i64 ptrtoint (ptr @bad_iov to i64), i64 2, i64 0, i64 0, i64 0)',7),
     'null-iov': ('%r = call i64 @__bennett_rt_syscall(i64 20, i64 1, i64 0, i64 2, i64 0, i64 0, i64 0)\n %q = icmp ne i64 %r, -14\n %status = zext i1 %q to i32\n ret i32 %status',0),
+    'stderr-console': ('%r = call i64 @__bennett_rt_syscall(i64 1, i64 2, i64 ptrtoint (ptr @bytes to i64), i64 2, i64 0, i64 0, i64 0)',0),
+    'iov-overflow': ('%r = call i64 @__bennett_rt_syscall(i64 20, i64 1, i64 ptrtoint (ptr @overflow_iov to i64), i64 2, i64 0, i64 0, i64 0)\n %q = icmp ne i64 %r, -22\n %overflow_status = zext i1 %q to i32\n ret i32 %overflow_status',0),
     'udiv-zero': ('%r = udiv i64 29, 0',5),
     'urem-zero': ('%r = urem i64 29, 0',5),
     'sdiv-zero': ('%r = sdiv i64 -29, 0',5),
@@ -45,6 +47,9 @@ CASES={
     'unreachable': ('unreachable',4),
     'trap': ('call void @llvm.trap()\n unreachable',4),
     'explicit': ('call void @__bennett_nz_fault(i64 18446744073709551615)\n unreachable',18446744073709551615),
+    'explicit-zero': ('call void @__bennett_nz_fault(i64 0)\n unreachable',4),
+    'unused-allocation': ('%r = call ptr @malloc(i64 1)',24),
+    'libcall-body': ('%r = call i64 @strlen(ptr @shortstr)',23),
 }
 
 def run(*args):
@@ -60,7 +65,9 @@ for major in (18,23):
     # even when original-source optimisation would have erased them.
     ir=['target triple = "x86_64-unknown-linux-musl"',
         '@bytes = global [2 x i8] [i8 23, i8 41], align 1',
+        '@shortstr = constant [4 x i8] c"abc\\00", align 8',
         '@bad_iov = global [2 x { ptr, i64 }] [{ ptr, i64 } { ptr @bytes, i64 2 }, { ptr, i64 } { ptr @bytes, i64 3 }], align 8',
+        '@overflow_iov = global [2 x { ptr, i64 }] [{ ptr, i64 } { ptr null, i64 9223372036854775807 }, { ptr, i64 } { ptr @bytes, i64 1 }], align 8',
         'declare ptr @__bennett_nz_alloc(i64)', 'declare void @__bennett_nz_free(ptr)',
         'declare void @__bennett_nz_fault(i64)',
         'declare void @__bennett_rt_memmove(ptr, ptr, i64)',
@@ -69,6 +76,8 @@ for major in (18,23):
         'declare void @llvm.trap()',
         'declare i64 @__bennett_rt_syscall(i64, i64, i64, i64, i64, i64, i64)',
         'define ptr @dead() noinline { %slot = alloca i16\n ret ptr %slot }',
+        'define i64 @strlen(ptr %s) { call void @__bennett_nz_fault(i64 23)\n unreachable }',
+        'define ptr @malloc(i64 %n) allockind("alloc") allocsize(0) { call void @__bennett_nz_fault(i64 24)\n unreachable }',
         'define i32 @main(i32 %argc, ptr %argv) {',
         '%slot = getelementptr ptr, ptr %argv, i64 1', '%arg = load ptr, ptr %slot',
         '%which = load i8, ptr %arg', '%p = call ptr @__bennett_nz_alloc(i64 3)',
@@ -95,7 +104,7 @@ for major in (18,23):
             assert result.returncode==-signal.SIGILL and result.stderr==f'bennett runtime fault {code}\n'.encode(),(major,label,result)
         else:
             assert result.returncode==0 and not result.stderr,(major,label,result)
-        expected=b'\x17)' if label=='writev-prefix' else b''
+        expected=b'\x17)' if label in ('writev-prefix','stderr-console') else b''
         assert result.stdout==expected,(major,label,result)
     assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
     assert b'NEEDED' not in run('readelf','-d',exe)
