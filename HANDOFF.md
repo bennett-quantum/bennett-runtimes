@@ -1,6 +1,6 @@
 # Current state — musl and console runtime publication
 
-Updated UTC: 2026-11-01T13:24:06Z (`date -u`).
+Updated UTC: 2026-11-01T13:26:10Z (`date -u`).
 
 brt-1ft is committed as 7c1cd4c. brt-cgb is committed as 095aa2c. brt-et9 fixes relocated LLVM 23 reproduction.
 Both LLVM majors publish combined bennett-runtimes.bc, a complete musl header
@@ -80,8 +80,10 @@ source_filename normalisation. Same-checkout reproduction hid the defect.
 brt-et9 adds a red-then-green relocated-source comparison to scripts/gate and
 passes source inputs relative to an explicit subprocess cwd. Metadata is kept,
 not stripped. scripts/gate now passes across relocated source paths, including
-all sysroot files and both majors. The final detached pre-push result follows
-in the session report. Orchestrator owns the worklog; none was written here.
+all sysroot files and both majors. The next detached attempt reproduced both publications and the relocated-source
+checks, then caught a test-only hardcoded sibling path in test_musl.py. It now
+respects BENNETT_ARITH_ROOT, matching pre-push/native-link and the older tests.
+The final detached pre-push result follows in the session report. Orchestrator owns the worklog; none was written here.
 
 Determining dialect sentences and repository completion criteria:
 

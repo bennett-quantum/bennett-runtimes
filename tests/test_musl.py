@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Real musl frontend, linked closure, static startup and formatted output."""
 from pathlib import Path
+import os
 import subprocess
 import json
 import hashlib
 ROOT = Path(__file__).resolve().parents[1]
+ARITH = Path(os.environ.get('BENNETT_ARITH_ROOT', ROOT.parent/'bennett-arith'))
 TMP = ROOT/'.tmp/musl-tests'
 TMP.mkdir(parents=True, exist_ok=True)
 def run(*args):
@@ -28,7 +30,7 @@ for m in (18,23):
         source=TMP/f'{label}.c'; source.write_text(code)
         bc=TMP/f'{label}-{m}.bc'; linked=TMP/f'{label}-linked-{m}.bc'
         run(llvm/'clang', '--target=x86_64-unknown-linux-musl', '--sysroot='+str(sysroot), '-nostdinc', '-isystem', sysroot/'include', '-O2', '-flto', '-emit-llvm', '-c', source, '-o', bc)
-        run(llvm/'llvm-link', bc, dist/'bennett-runtimes.bc', ROOT.parent/f'bennett-arith/dist/llvm{m}/bennett-arith.bc', '--only-needed', '-o', linked)
+        run(llvm/'llvm-link', bc, dist/'bennett-runtimes.bc', ARITH/f'dist/llvm{m}/bennett-arith.bc', '--only-needed', '-o', linked)
         run(llvm/'opt', '-passes=lto<O3>', linked, '-o', linked)
         exe=TMP/f'{label}-{m}'
         run(ROOT/'scripts/native-link', str(m), linked, exe)
