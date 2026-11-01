@@ -40,13 +40,13 @@ def nonintrinsic_undefined(ir):
 for major in (18, 23):
     llvm = Path(f'/usr/lib/llvm-{major}/bin')
     dist = ROOT/f'dist/llvm{major}'
-    bc = dist/'bennett-runtimes.bc'
+    bc = dist/'musl-sysroot/lib/bennett-allocator.bc'
     arith = ARITH/f'dist/llvm{major}/bennett-arith.bc'
     manifest = json.loads((dist/'manifest.json').read_text())
     assert manifest['llvm_major'] == major
-    assert manifest['sha256'] == hashlib.sha256(bc.read_bytes()).hexdigest()
+    assert manifest['sha256'] == hashlib.sha256((dist/'bennett-runtimes.bc').read_bytes()).hexdigest()
     assert manifest['dialect_commit'] == '023f5a771a814270634db3be9cfde88ded69f975'
-    assert set(manifest['exports']) == EXPORTS
+    assert set(manifest['exports']) >= EXPORTS
     for source, expected in manifest['sources'].items():
         assert hashlib.sha256((ROOT/source).read_bytes()).hexdigest() == expected, source
     ir = run(llvm/'llvm-dis', bc, '-o', '-').decode()

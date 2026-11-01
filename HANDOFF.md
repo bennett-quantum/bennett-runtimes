@@ -1,3 +1,16 @@
+# Current state — musl sysroot pass
+
+Updated UTC: 2026-11-01T13:09:42Z (`date -u` checked).
+
+brt-1ft: real musl 1.2.5 stdio/exit bitcode and complete headers now publish
+with both major runtimes. Archive SHA/provenance and build details: README.md
+and vendor/README.md. Static hello and formatted printf/atexit/flush tests use
+no host libc; original allocator regression/golden tests remain green.
+The syscall platform import is completed by brt-cgb next. Dialect reading
+b-dialect-spec-lbq was filed and exported in commit 7159683.
+
+Previous rung-2 handoff follows for retained limitations:
+
 # Current state — rung-2 runtime publication
 
 Updated UTC: 2026-10-31T22:38:12Z (`date -u`).

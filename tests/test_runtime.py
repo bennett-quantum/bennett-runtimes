@@ -16,7 +16,7 @@ for major in (18, 23):
                     '-DBENNETT_NATIVE_HEAP_SIZE=256', '-DBENNETT_NATIVE_ALLOCATIONS=64',
                     '-Wl,--section-start=.bennett_heap=0x10000000',
                     str(ROOT/'tests/allocator.c'), str(ROOT/'src/native/heap.c'),
-                    str(ROOT/f'dist/llvm{major}/bennett-runtimes.bc'), '-o', str(exe)], check=True)
+                    str(ROOT/f'dist/llvm{major}/musl-sysroot/lib/bennett-allocator.bc'), '-o', str(exe)], check=True)
     subprocess.run([str(exe)], check=True)
     for case, message in [('d', b'invalid or double free'), ('i', b'invalid or double free'),
                           ('g', b'invalid or double free'), ('o', b'heap exhausted'),

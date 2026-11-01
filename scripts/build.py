@@ -6,11 +6,15 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import importlib.util
+_module = importlib.util.spec_from_file_location('musl', Path(__file__).with_name('musl.py'))
+musl = importlib.util.module_from_spec(_module)
+_module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
-FLAGS = ['-target', 'x86_64-unknown-linux-gnu', '-std=c11', '-O2', '-flto',
+FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
          '-fno-ident', '-Wall', '-Wextra', '-Werror']
 
@@ -45,24 +49,41 @@ def build(major):
         bc = ll.with_suffix('.bc')
         run(llvm/'llvm-as', ll, '-o', bc)
         objects.append(bc)
-    artifact = scratch/'publish.bc'
+    core = scratch/'allocator.bc'
+    run(llvm/'llvm-link', *objects, '-o', core)
+    files, musl_flags = musl.prepare(ROOT, out, scratch)
+    for i, source in enumerate(files):
+        ll = scratch/f'musl-{i}.ll'
+        run(llvm/'clang', *musl_flags, '-S', source, '-o', ll)
+        text = ll.read_text()
+        text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
+        logical = str(source.relative_to(scratch)) if source.is_relative_to(scratch) else str(source.relative_to(ROOT))
+        text = re.sub(r'^source_filename = .*', f'source_filename = "{logical}"', text, flags=re.M)
+        ll.write_text(text)
+        bc=ll.with_suffix('.bc')
+        run(llvm/'llvm-as', ll, '-o', bc)
+        objects.append(bc)
+    (out/'musl-sysroot/lib/bennett-allocator.bc').write_bytes(core.read_bytes())
+    artifact = scratch/'publish.bc' 
     run(llvm/'llvm-link', *objects, '-o', artifact)
     run(llvm/'opt', '-passes=verify', '-disable-output', artifact)
     ir = run(llvm/'llvm-dis', artifact, '-o', '-')
     exports = sorted(re.findall(r'^define (?!internal |private ).*?@([^ (]+)\(', ir, re.M))
-    assert exports == EXPORTS, exports
+    assert set(EXPORTS + ['printf','puts','write','exit']) <= set(exports), exports
     assert not re.search(r'^define .*@__bennett_nz_', ir, re.M)
     manifest = {
-        'implementation': 'rung-2-allocation-v1', 'llvm_major': int(major),
-        'target': 'x86_64-unknown-linux-gnu', 'dialect': '0.2.10',
+        'implementation': 'musl-console-v1', 'llvm_major': int(major),
+        'target': 'x86_64-unknown-linux-musl', 'dialect': '0.2.10',
         'dialect_commit': '023f5a771a814270634db3be9cfde88ded69f975',
         'isa': '0.8', 'sha256': sha(artifact), 'exports': exports,
         'primitive_imports': ['__bennett_nz_alloc', '__bennett_nz_fault', '__bennett_nz_free'],
         'flags': FLAGS,
+        'musl': {'version': musl.VERSION, 'url': musl.URL, 'source_sha256': musl.SHA, 'files': sorted(set(musl.FILES)), 'flags': [re.sub(str(scratch), '<build>', re.sub(str(out), '<dist>', f)) for f in musl_flags]},
+        'sysroot': {str(p.relative_to(out)): sha(p) for p in sorted((out/'musl-sysroot').rglob('*')) if p.is_file()},
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'src/musl/context.c', 'src/native/start.S', 'src/native/start.c', 'src/native/syscall.c', 'src/native/heap.c', 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'

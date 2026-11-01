@@ -25,3 +25,7 @@ build/
 !dist/llvm23/
 !dist/llvm18/bennett-runtimes.bc
 !dist/llvm23/bennett-runtimes.bc
+
+!dist/llvm18/musl-sysroot/lib/bennett-allocator.bc
+!dist/llvm23/musl-sysroot/lib/bennett-allocator.bc
+__pycache__/

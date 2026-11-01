@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Comparison support for original C/bitcode; driver materialisation remains §17.7.
+set -euo pipefail
+unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
+root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
+export TMPDIR="$root/.tmp"
+major="$1"; input="$2"; output="$3"
+case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
+sysroot="$root/dist/llvm$major/musl-sysroot"
+scratch="$(mktemp -d "$TMPDIR/native-link-XXXXXXXX")"
+trap 'rm -rf "$scratch"' EXIT
+"/usr/lib/llvm-$major/bin/llvm-link" "$input" --override="$root/dist/llvm$major/bennett-runtimes.bc" -o "$scratch/combined.bc"
+"/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl \
+  --sysroot="$sysroot" -nostdlib -nostdinc -static -O2 -no-pie \
+  -ffreestanding -fno-builtin -isystem "$sysroot/include" -Wl,-e,_start \
+  -Wl,--section-start=.bennett_heap=0x10000000 \
+  "$scratch/combined.bc" \
+  "$sysroot/lib/start.S" "$sysroot/lib/start.c" "$sysroot/lib/syscall.c" "$sysroot/lib/heap.c" -o "$output"

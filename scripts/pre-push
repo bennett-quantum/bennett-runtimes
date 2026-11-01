@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Gate the actual pushed commits in isolation, including checked-in publications.
+# Gate actual pushed commits in isolation, including musl sysroots, static
+# no-host-libc comparisons, and checked-in major-matched publications.
 set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
 script_dir="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"

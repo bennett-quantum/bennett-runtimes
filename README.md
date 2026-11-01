@@ -65,3 +65,33 @@ remain driver/plugin responsibilities. Exact byte-bump allocation follows the
 §16.9 example; odd-sized typed C allocation alignment needs contract resolution
 (`b-dialect-spec-jjr`). Broader libc and all remaining runtime contracts retain
 scope under `brt-q1k` / `brt-zct`; no unsupported-symbol trap stubs are published.
+
+## Rung 3 musl publication (brt-1ft)
+
+The combined `bennett-runtimes.bc` now includes the explicit musl 1.2.5
+stdio/exit closure from the unchanged, vendored source archive. Its SHA-256 is
+`a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4`;
+see `vendor/README.md` for provenance/licence and `scripts/musl.py` for source
+selection. Build is offline, using each major's Clang/llvm-as/llvm-link/opt.
+All musl headers are in `dist/llvm<M>/musl-sysroot/include`; the manifest hashes
+every sysroot file and records tools, flags, sources and exports. The combined
+artifact keeps the existing §19.1 consumer link sufficient. There is no musl
+malloc: public malloc/calloc/free remain this repo's zero-filling wrappers;
+musl's internal calloc alias routes to the same implementation (§17.1).
+
+`musl-sysroot/lib` supplies comparison-only Linux x86_64 start.S/start.c,
+syscall.c and the primitive heap backend. `scripts/native-link M INPUT.bc OUTPUT`
+uses these with `-nostdlib -nostdinc -static -O2`, without host CRT/libc/libm.
+This tests native support; the driver still owns §17.7 materialisation/layout,
+§19.2 argv/envp preparation and §14.7 pseudo-exception propagation. The static
+single-thread musl process context supplies errno and locale without host TLS.
+The separately hashed allocator bitcode under the sysroot is a regression-test
+artifact; consumers use the combined runtime, not two allocator definitions.
+
+The musl platform syscall header routes to `__bennett_rt_syscall`; the console
+bridge is tracked by brt-cgb. No production marker is defined. Startup and
+writev/terminal-query readings are recorded in dialect bead b-dialect-spec-lbq.
+The gate byte-compares the entire sysroot and both bitcode publications, tests
+ordinary hello, formatted printf (including floating point), real atexit handlers,
+stdio flush and static native closure. Remaining musl families stay within
+brt-q1k/brt-zct; this source closure is not a claim of full DR conformance.
