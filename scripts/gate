@@ -13,6 +13,7 @@ for major in 18 23; do
   done
   diff -r "$root/dist/llvm$major/musl-sysroot" "$rebuild/llvm$major/musl-sysroot"
 done
+python3 -I "$root/tests/test_reproducibility.py"
 python3 -I "$root/tests/test_runtime.py"
 python3 -I "$root/tests/test_publication.py"
 python3 -I "$root/tests/test_musl.py"

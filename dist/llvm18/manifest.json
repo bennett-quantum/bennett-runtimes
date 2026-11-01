@@ -225,7 +225,7 @@
   "sources": {
     "SPEC_VERSIONS.toml": "8bf88d5b7905d706ca74f3848dc44dccb90f2e5459bb9abd5f027088c0e35489",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
-    "scripts/build.py": "e9f64ca3c509119c8f182a72cd282af62b13d0a97c685d008b64db2ca76fdcf6",
+    "scripts/build.py": "1fcc1d78bcf664672f9e5b217690874a1fca6b89953ea82ddb83024dbcd60f83",
     "scripts/musl.py": "303c9df4f3e3d1c3aa7eeba8afe3507d6f94f51d2dff911a4741da7bb5b095bb",
     "scripts/native-link": "8db418aa8fdb30ccabbcb14621471e6cc6853a460e130ec78bb8e5d0445090a2",
     "src/allocator/bump.c": "1f0a789e8c35184476c295fb49cd17daaf1a34ef19b2de7bd44e02f2c703b607",

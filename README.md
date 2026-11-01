@@ -45,7 +45,8 @@ See [vendor/README.md](vendor/README.md) and
 [libc-shims/README.md](libc-shims/README.md). There is no musl allocator object:
 public malloc/calloc/free and musl's internal calloc use this repo's allocator.
 
-The gate byte-compares both complete sysroots, bitcode and manifests. It checks
+The gate byte-compares both complete sysroots, bitcode and manifests, including
+a second build from a relocated source tree (stable LLVM 23 local-symbol GUIDs). It checks
 export/allocation attributes, recorded+fresh rung-2 link/LTO closure, allocation
 semantics and ten native golden cases per major. Musl tests compile ordinary
 hello plus formatted printf (including floating point), atexit, explicit exit,

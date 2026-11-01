@@ -22,7 +22,7 @@ def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 def run(*args):
-    return subprocess.check_output([str(a) for a in args], text=True)
+    return subprocess.check_output([str(a) for a in args], text=True, cwd=ROOT)
 
 def build(major):
     if major not in ('18', '23'):
@@ -35,7 +35,7 @@ def build(major):
     objects = []
     for source in SOURCES:
         ll = scratch/(Path(source).stem+'.ll')
-        run(llvm/'clang', *FLAGS, '-S', '-emit-llvm', ROOT/source, '-o', ll)
+        run(llvm/'clang', *FLAGS, '-S', '-emit-llvm', source, '-o', ll)
         text = ll.read_text()
         text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
         text = re.sub(r'^source_filename = .*', f'source_filename = "{source}"', text, flags=re.M)
@@ -54,7 +54,7 @@ def build(major):
     files, musl_flags = musl.prepare(ROOT, out, scratch)
     for i, source in enumerate(files):
         ll = scratch/f'musl-{i}.ll'
-        run(llvm/'clang', *musl_flags, '-S', source, '-o', ll)
+        run(llvm/'clang', *musl_flags, '-S', source.relative_to(ROOT), '-o', ll)
         text = ll.read_text()
         text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
         logical = str(source.relative_to(scratch)) if source.is_relative_to(scratch) else str(source.relative_to(ROOT))
@@ -65,12 +65,12 @@ def build(major):
         objects.append(bc)
     (out/'musl-sysroot/lib/bennett-allocator.bc').write_bytes(core.read_bytes())
     start = scratch/'start.ll'
-    run(llvm/'clang', *musl_flags, '-S', ROOT/'src/native/start.c', '-o', start)
+    run(llvm/'clang', *musl_flags, '-S', 'src/native/start.c', '-o', start)
     text = re.sub(r'^; ModuleID = .*\n', '', start.read_text(), flags=re.M)
     text = re.sub(r'^source_filename = .*', 'source_filename = "src/native/start.c"', text, flags=re.M)
     start.write_text(text)
     run(llvm/'llvm-as', start, '-o', out/'musl-sysroot/lib/start.bc')
-    artifact = scratch/'publish.bc' 
+    artifact = scratch/'publish.bc'
     run(llvm/'llvm-link', *objects, '-o', artifact)
     run(llvm/'opt', '-passes=verify', '-disable-output', artifact)
     ir = run(llvm/'llvm-dis', artifact, '-o', '-')
