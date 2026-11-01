@@ -1,101 +1,104 @@
-# Current state — musl and console runtime publication
+# Handoff — resolved-layout native comparison closure
 
-Updated UTC: 2026-11-01T13:26:10Z (`date -u`).
+Updated UTC: 2026-11-01T14:21:41Z (`date -u`). No push/network; driver source read-only.
+Pinned dialect **0.2.10 @023f5a771a814270634db3be9cfde88ded69f975**, ISA **0.8**.
+Implementation commit **43bef24**. brt-nuu's requested native O2 closure is now
+published; brt-nuu remains open for its sanitizer/consumer integration scope.
 
-brt-1ft is committed as 7c1cd4c. brt-cgb is committed as 095aa2c. brt-et9 fixes relocated LLVM 23 reproduction.
-Both LLVM majors publish combined bennett-runtimes.bc, a complete musl header
-sysroot and native startup bitcode/support. Musl 1.2.5 archive SHA-256:
-a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4.
-No build fetches anything. Sources remain upstream, with separate generated
-platform headers; musl never replaces this repo's zero-filling allocator.
-
-scripts/gate PASS: byte-identical bitcode/manifests/full sysroots; allocator
-attributes/address/zero-fill/history and seven fault vectors per major;
-recorded+fresh rung-2 link/LTO and ten golden native cases; static musl hello,
-formatted printf (including floating point), atexit, return/explicit-exit flush,
-write and putchar. Native musl tests link matching arith, no host CRT/libc/libm,
-and have no undefined symbols or dynamic imports. start.bc is native startup;
-§19.2 device launch preparation and §17.7 materialised comparison remain driver
-responsibilities. N28–N30 must use the returning __bennett_rt_exit helper and
-propagate/catch the §14.7 EH state, removing noreturn/unreachable constraints.
-
-The console syscall bridge maps fd 1/2 writes to an undefined effect marker,
-with writev aggregate preflight and vector-order emission (§11.2). Production
-contains no marker/primitive definition. R tape stays in the ISA; the L model
-has ordinary bound buffer/capacity/length state (§11.3), distinct unbound and
-bound-zero-capacity cases. Private oracle output truncates; bounded action
-output faults before mutation. State and test history layouts are documented
-in device-models/README.md. Published-model store instrumentation checks
-byte-exact device/tape reset from nonzero preimages and deterministic replay,
-including tampered bytes. This is native-model validation, not an executor's
-whole-program state proof or full DR/DE conformance.
-
-Dialect b-dialect-spec-lbq records both readings of startup, console framing,
-terminal metadata and tape ABI; exported alone in dialect commit 7159683.
-Implementation follows the explicit per-tier text. brt-zct and brt-q1k remain
-open for full runtime/libc/VFS/thread/device families. Odd-sized typed C
-allocation alignment still needs b-dialect-spec-jjr; current §16.9 byte-bump
-history is preserved. No unsupported-symbol trap stubs replace libc functions.
-
-The requested frozen consumer ran exactly once, exit 1. Evidence:
-`../bennett-conformance/.tmp/rung-3/20261101T131913.989380Z/`.
-It uses the new working sysroot headers, but archives runtime commit 6808622
-by default: its libc/console audit still names the old missing exports, not
-this publication. All current-publication export/route tests pass locally.
-No conformance or sibling source was edited; only the authorised dialect
-bead export was committed. No push, remote sync, CI or display process occurred.
-
-| Stage | LLVM 18 | LLVM 23 |
+| LLVM | Path under dist/llvmM | SHA-256 |
 |---|---|---|
-| fixtures | PASS | PASS |
-| plugin build | PASS | PASS |
-| VM build | PASS | PASS |
-| driver build | PASS | PASS |
-| musl C front end | PASS | PASS |
-| runtime bitcode link | PASS | PASS |
-| post-link LTO | PASS | PASS |
-| reversible production | FAIL · bp-ivy | FAIL · bp-ivy |
-| launch artefacts | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| native comparison | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| reference admission | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| reference forward = native | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| reference reset | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| reference tape replay | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| VM admission | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| VM forward = native | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| VM reset | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| VM tape replay | BLOCKED · bp-ivy | BLOCKED · bp-ivy |
-| runtime libc/console audit (diagnostic) | FAIL · brt-1ft, brt-cgb | FAIL · brt-1ft, brt-cgb |
-| R-mode probe (diagnostic) | FAIL · bp-ivy | FAIL · bp-ivy |
-| driver probe (diagnostic) | FAIL · bennett-driver-cyg | FAIL · bennett-driver-cyg |
-| ISA-0.8 R contract (prerequisite) | FAIL · b-isa-spec-221 | FAIL · b-isa-spec-221 |
-| reference device/reset control (diagnostic) | PASS | PASS |
-| reference replay API (diagnostic) | FAIL · b-isa-spec-04d | FAIL · b-isa-spec-04d |
-| VM device/reset control (diagnostic) | PASS | PASS |
-| VM replay API (diagnostic) | FAIL · bennett-vm-u8m | FAIL · bennett-vm-u8m |
+| 18 | `bennett-runtimes.bc` | `6c1741c4e511a08a22eff47ed4380aed626557ee66225b38a884edc83e9f319d` |
+| 18 | `bennett-runtimes-native.bc` | `33fe088ada8fe26e48b5073cd49728e23d7da36d6f541d1b2d047f65dd12569f` |
+| 18 | `musl-sysroot/lib/native-support.bc` | `2dc059d487ba0214fe34bd7b90a6bf948c9fae3899eb1b828fad9342bd7641a6` |
+| 23 | `bennett-runtimes.bc` | `a63f0421e1d40ebfe6bd391ffa9344db0807aa966a03eed8274e225710a54632` |
+| 23 | `bennett-runtimes-native.bc` | `7065f87587205d0b3a414eaf0b7a5ddf41b3d353bc477cd06371c62cd9936442` |
+| 23 | `musl-sysroot/lib/native-support.bc` | `e775ad18bf7ff43dc68018713dc62ef9e2f829769e7006c26eab1b5e37e4907d` |
 
-The first detached pre-push failed for LLVM 23: Clang !guid metadata for
-internal symbols had already hashed the absolute input file before our IR
-source_filename normalisation. Same-checkout reproduction hid the defect.
-brt-et9 adds a red-then-green relocated-source comparison to scripts/gate and
-passes source inputs relative to an explicit subprocess cwd. Metadata is kept,
-not stripped. scripts/gate now passes across relocated source paths, including
-all sysroot files and both majors. The next detached attempt reproduced both publications and the relocated-source
-checks, then caught a test-only hardcoded sibling path in test_musl.py. It now
-respects BENNETT_ARITH_ROOT, matching pre-push/native-link and the older tests.
-The final detached pre-push result follows in the session report. Orchestrator owns the worklog; none was written here.
+Production bitcode SHAs are unchanged from M2. Native definitions are isolated
+from production: no primitive or effect marker is defined in the device library.
+Native bitcode uses real pinned musl 1.2.5, the same allocator and L console
+model, a native build of the same syscall bridge, `_start`/Linux exit, native
+console stdout transport and native alloc/free/fault. No host libc/libm/CRT or
+hosted sanitizer library is linked. No unsupported-symbol trap stubs were added.
 
-Determining dialect sentences and repository completion criteria:
+## Resolved layout and driver integration
 
-- §4.5 item 2: “The shim is an ordinary device function”. §19.1: “The driver
-  links all bitcode inputs (§19.8), links `bennett-runtimes` and `bennett-arith`
-  bitcode of the link's major M”. §17.7: “never host libc or libm”. brt-1ft
-  fixed means actual musl headers/bitcode, ordinary printf/puts/write/exit
-  closure with our zero-filled allocator and static native startup/comparison
-  support, reproducible for both majors. It does not mean a seed libc.
-- §11.2: “`bennett-runtimes`' musl maps system calls onto the markers”. §11.3:
-  “In an L variant, an effect marker call becomes a call of the runtimes
-  function `__bennett_dev_<model>_<op>` with the same operands.” brt-cgb fixed
-  here means that marker bridge, ordinary bound model state, specified faults,
-  and runtime-level reverse/replay vectors. R keeps ISA tape and executor
-  whole-program acceptance remains the conformance gate's responsibility.
+The required driver-emitted `__bennett_rt_native_layout` constant is three
+8-byte-aligned little-endian u64 fields: `{1, heap_base, heap_limit_max}`.
+The base may be a linker relocation. Use the resolved §19.5 values: first page
+after data and largest heap budget (including shadow stack). Do NOT read
+`__bennett_rt_blk.<f>`: §14.9 gives those k-byte blockaddress identity only.
+Heap mapping uses MAP_FIXED_NOREPLACE: exact configured address or typed loud
+failure, including Linux low-address restrictions; no default/relocation.
+History is private native bookkeeping, one record per configured byte, so
+max(n,1) can never exhaust an independent smaller allocation table. Zero fill,
+no reclaim, free(NULL), invalid/interior/double free and budget fault semantics
+follow §§17.1/17.5 and ISA §7.1. Fault diagnostics preserve every uint64 code
+before SIGILL; no subsequent source effect executes (§11.5).
+
+Use full `bennett-runtimes-native.bc` for original-input native baselines, never
+to overwrite materialised functions. For materialised device input, the order is:
+
+1. `llvm-link device.bc bennett-runtimes.bc bennett-arith.bc --only-needed`.
+2. Link that result plus `driver-layout.bc`, with
+   `--override=musl-sysroot/lib/native-support.bc` (retain all support definitions).
+3. Link the adapted module with production runtimes then arith `--only-needed`
+   **again**: startup introduces exit/environ/stdio-flush imports.
+4. `opt -passes=strip-dead-prototypes,verify`; same-major clang `-O2 -nostdlib
+   -nostdinc -static -no-pie`, driver comparison script, `-Wl,-e,_start` and
+   `-Wl,--no-undefined`. Retain any ABI memory helpers native codegen needs.
+
+The support overrides only the syscall transport and adds native functions;
+materialised exit helper/EH state and L model remain intact. No effect marker
+is defined. The materialiser must already have lowered all effect calls,
+including inlined ones. Native startup does not supply §19.2 device entry
+preparation or replace §14.7 EH propagation. §17.7 division checks, common
+native/device addresses and complete launch remain driver responsibilities.
+README contains the exact commands and original-input `scripts/native-link`
+usage (required configuration, optional comparison script).
+
+The existing driver does not yet emit this table or implement the support
+merge. No actual plugin-materialised driver comparison execution is claimed:
+the new adapter tests an already-linked shape, alongside unmodified corpus
+baselines. Existing R/ISA whole-program blockers remain as recorded in M2;
+this publication does not resolve bp-ivy/BD-B-ISA7 or executor reset/replay.
+
+## Verification and tracking
+
+RED: `tests/test_native.py` initially failed on missing native publication.
+GREEN: `scripts/gate` PASS, both majors: same-checkout and relocated-source
+byte-for-byte bitcode/manifests/full sysroots; export/import and allocation
+attributes; fresh+recorded rung-2 LTO closure; ten unmodified hashtable golden
+cases plus rung-3 hello under strict static no-host links and two actual
+§19.5 linker layouts. Support-adapter links and missing-layout refusal pass.
+Native binaries have zero undefined symbols/dynamic imports. Additional
+vectors cover 65,537 zero-size allocations, zero heap, invalid ABI/alignment,
+null/overflow/colliding ranges, seven allocator fault cases and arbitrary
+uint64 fault codes; musl printf float/atexit/flush/explicit exit/write/putchar
+and instrumented console reset/replay/tamper tests pass. The existing allocator
+and console unit executables now also use strict freestanding links.
+
+Clean detached `scripts/pre-push` result: **PASS**, implementation SHA
+`43bef243db4cbab624dbe773b4947e35a66a4317`. The subsequent
+handoff/bead-only commit changes no tested code or publication bytes.
+Root receipts: `.tmp/gate-native.log`, `.tmp/pre-push-native.log`.
+
+Dialect **b-dialect-spec-0na**, labels consumer,dialect,runtimes, is filed and
+committed as **eaad067** in the dialect repo (export only). It quotes §3.1 and
+§19.5 with both readings: native lowering/configuration exception versus a
+literal ban on native primitive and driver runtime-object definitions. We use
+the reading supporting explicit §17.7 same-major native comparison, isolating
+native support from ordinary device shims (§4.5). Accepted spec unchanged.
+**brt-nuu.1** tracks the remaining real freestanding ASan/UBSan closure or
+specified instrumentation adapter; no no-op sanitizer handlers or host fallback.
+No bead closed prematurely. brt-zct/brt-q1k and allocator alignment dialect
+b-dialect-spec-jjr retain their broader obligations.
+
+Gotchas found: startup must precede final --only-needed closure; a custom
+linker script must explicitly select `_start` (otherwise the first text symbol
+can become ELF entry); dead marker prototypes need cleanup after transport
+override. An unused malloc result was optimized away, so allocator fault tests
+now make it observable through a volatile sink. `bd -C ... export -o` resolves
+the output against the shell cwd; use `env -C REPO bd export ...` for sibling
+exports. A temporary misdirected passive export was regenerated from the
+correct runtime DB before commit; no database or unrelated file was changed.
