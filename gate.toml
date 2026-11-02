@@ -1,0 +1,21 @@
+# Push-gate pins (bennett/tools/gate_README.md). Siblings resolve only to these commits.
+schema = 1
+repo = "bennett-runtimes"
+tool_sha = "c698ce1c56d33fdae36624b8616d673a8836679a"
+timeout_s = 28800
+
+[env]
+BENNETT_CONFORMANCE_ROOT = "{sibling:bennett-conformance}"
+BENNETT_ARITH_ROOT = "{sibling:bennett-arith}"
+
+[[check]]
+name = "runtimes gate"
+argv = ["scripts/gate"]
+
+[siblings."bennett-conformance"]
+sha = "b077ae2a22e73b2321dcfe2fccede885f47b8d89"
+note = "conformance main on origin"
+
+[siblings."bennett-arith"]
+sha = "aab308f8305e92d4946d1ea302af1ea196a27bb3"
+note = "arith main on origin"
