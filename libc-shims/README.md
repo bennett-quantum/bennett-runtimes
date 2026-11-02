@@ -1,8 +1,8 @@
 # musl platform integration
 
 The upstream musl 1.2.5 source archive and licence are in `vendor/`.
-`scripts/musl.py` selects unchanged upstream stdio, string, conversion, errno,
-lock and exit implementations, builds them with each LLVM major, and publishes
+`scripts/musl.py` selects upstream stdio, string, conversion, errno,
+lock and exit implementations with the recorded patches below, builds them with each LLVM major, and publishes
 all upstream headers. `src/musl/context.c` supplies the static process context
 (thread pointer, errno/locale backing, environ) and routes musl's internal
 calloc to the published zero-filling allocator. No host TLS/libc is used.
@@ -25,7 +25,7 @@ whole-program entry catches it (§14.7). The original native sysroot test path
 uses a Linux exit_group transport and verifies buffered flush and exit status.
 It does not prove the driver's materialised exit path.
 
-Remaining libc/VFS/thread/runtime families retain scope under brt-q1k/brt-zct.
+Remaining VFS/thread/runtime families retain scope under brt-zct.
 Materialised native comparisons use `scripts/native-check 18|23 INPUT.bc
 CHECKED.bc` after the materialised device module is fixed and before merging
 `musl-sysroot/lib/native-support.bc`. The adapter adds checks to a separate
@@ -98,3 +98,23 @@ musl's existing scalar fallbacks for strlen, strchrnul and memchr under the
 recorded runtime profile. Their word-at-a-time paths can read beyond a small
 live string before noticing its terminator. Archive and patch provenance are
 recorded; SQLite's source and vectorisation flags are unchanged.
+
+The FILE closure includes upstream fmemopen/open_memstream and read, write,
+seek/tell/position, EOF/error, append and close operations. The versioned
+`vendor/musl-zero-memory-file.patch` prevents a write through a zero-sized
+fmemopen buffer and reports capacity failures as ENOSPC/F_ERR with partial
+write counts, instead of losing buffered output while reporting success.
+These are ordinary FILE, buffer and allocator state; no host file is opened.
+
+The unmodified SQLite 3.54.1 archive is a pinned test input (see
+`vendor/SQLITE-README.md`). The component test uses the spike's OS_OTHER
+memory-only VFS profile and the actual SQLite memdb implementation. The query
+takes caller image/length/rowid parameters; the input region is padded to a
+power of two, and tests use both the original image and a writable unaligned
+copy. Every one of 1026 rowids starts in a fresh cold process and is checked
+against an independent predicate; an attempted UPDATE must return READONLY
+and preserve input bytes. The stock frontend and LTO vectorise normally;
+N21 scalarisation precedes native memory/fault checks. A comparison-only
+test adapter transports already inlined console markers. This is a static
+libc/memdb component check, not complete driver materialisation, quantum
+execution, generic disk/filesystem support, or full rung-4 conformance.

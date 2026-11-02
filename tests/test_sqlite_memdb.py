@@ -34,9 +34,10 @@ db.execute('PRAGMA page_size=4096')
 db.execute('CREATE TABLE people(id INTEGER PRIMARY KEY,name TEXT,city TEXT,age INTEGER,score INTEGER)')
 db.executemany('INSERT INTO people VALUES(?,?,?,?,?)',rows); db.commit(); db.close()
 data=dbpath.read_bytes(); assert data[:16]==b'SQLite format 3\0' and len(data)%4096==0
+size=len(data); region=1<<(size-1).bit_length(); data+=b'\0'*(region-size)
 h=14695981039346656037
 for b in data: h=((h^b)*1099511628211)&((1<<64)-1)
-(TMP/'image.h').write_text('#define IMAGE_ROWS 1024\n#define IMAGE_HASH UINT64_C('+str(h)+')\nstatic const unsigned char image[]={'+','.join(map(str,data))+'};\n')
+(TMP/'image.h').write_text('#define IMAGE_ROWS 1024\n#define IMAGE_SIZE '+str(size)+'\n#define IMAGE_HASH UINT64_C('+str(h)+')\nstatic const unsigned char image[]={'+','.join(map(str,data))+'};\n')
 flags=['-DSQLITE_THREADSAFE=0','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OS_OTHER=1',
        '-DSQLITE_TEMP_STORE=3','-DSQLITE_DEFAULT_MEMSTATUS=0','-DSQLITE_OMIT_SHARED_CACHE',
        '-DSQLITE_OMIT_DEPRECATED','-DSQLITE_DQS=0']
@@ -50,9 +51,13 @@ for major in (18,23):
         bc=TMP/f'{source.stem}-{major}.bc'; objects.append(bc)
         run(llvm/'clang','--target=x86_64-unknown-linux-musl','-O2','-flto',
             '-nostdinc','-isystem',dist/'musl-sysroot/include','-I',TMP,*flags,'-emit-llvm','-c',source,'-o',bc)
-    linked=TMP/f'linked-{major}.bc'; final=TMP/f'postlink-{major}.bc'
-    run(llvm/'llvm-link',*objects,dist/'bennett-runtimes.bc','--only-needed','-o',linked)
-    run(llvm/'opt','-passes=lto<O3>',linked,'-o',final)
+    app=TMP/f'app-{major}.bc'; linked=TMP/f'linked-{major}.bc'; final=TMP/f'postlink-{major}.bc'
+    # Link every application translation unit before selecting the runtime
+    # closure. --only-needed on the TU link would discard unreferenced main.
+    run(llvm/'llvm-link',*objects,'-o',app)
+    run(llvm/'llvm-link',app,dist/'bennett-runtimes.bc','--only-needed','-o',linked)
+    run(llvm/'opt','-passes=internalize,lto<O3>','-internalize-public-api-list=main,query_on_image',linked,'-o',final)
+    assert 'main' in {l.split()[-1] for l in run(llvm/'llvm-nm','--defined-only',final).decode().splitlines() if l.split()}
     undefined={l.split()[-1] for l in run(llvm/'llvm-nm','--undefined-only',final).decode().splitlines() if l.split()}
     assert undefined<={'__bennett_nz_alloc','__bennett_nz_free','__bennett_nz_fault','__bennett_effect_console_write'},undefined
     # N21 scalarisation follows the vectorising stock frontend and LTO.
@@ -60,7 +65,18 @@ for major in (18,23):
     options=['-passes=scalarizer','-scalarize-load-store'] if major==18 else ['-passes=scalarizer<load-store>']
     run(llvm/'opt',*options,final,'-o',scalar)
     layout=TMP/f'layout-{major}.ll'; exe=TMP/f'query-{major}'
-    layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 536875008,i64 1048576}, align 8\n')
+    # Comparison-only test transport for console calls already inlined by
+    # LTO. The production publication still never defines effect markers.
+    # This test adapter is not an R effect tape or driver materialisation.
+    layout.write_text('''@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 536875008,i64 1048576}, align 8
+declare void @__bennett_rt_native_check(ptr,i64)
+declare void @__bennett_rt_native_console_write(ptr,i64)
+define void @__bennett_effect_console_write(ptr %p,i64 %n) {
+  call void @__bennett_rt_native_check(ptr %p,i64 %n)
+  call void @__bennett_rt_native_console_write(ptr %p,i64 %n)
+  ret void
+}
+''')
     run(ROOT/'scripts/native-check-link',major,scalar,exe,layout)
     assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
     assert b'NEEDED' not in run('readelf','-d',exe)
