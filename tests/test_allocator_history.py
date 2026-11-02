@@ -10,7 +10,7 @@ for major in (18,23):
     llvm=Path(f'/usr/lib/llvm-{major}/bin')
     ir=subprocess.check_output([llvm/'llvm-dis',ROOT/f'dist/llvm{major}/musl-sysroot/lib/bennett-allocator.bc','-o','-'],text=True)
     for name in ('malloc','calloc','free','realloc','memset'):
-        ir=re.sub(r'@'+name+r'(?=\()', '@test_'+name,ir)
+        ir=re.sub(r'@'+name+r'(?=[(\s},])', '@test_'+name,ir)
     lines=[]; stores=0
     for line in ir.splitlines():
         if line.lstrip().startswith('store '):

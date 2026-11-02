@@ -86,3 +86,15 @@ handlers in reverse registration order and flush buffered stdio once;
 and inherited ISA effect tape. Native/context and store-history tests do not
 establish full R execution under the repo's ISA 0.8 pin (BLK-5).
 
+
+The SQLite closure adds upstream musl bcmp/strncmp/strspn/strcspn/strrchr,
+the bounded-memory helpers they use, and a UTC time-conversion profile.
+`localtime[_r]` and `gmtime[_r]` use unmodified musl `__secs_to_tm`, set DST and
+GMT offset to zero, and use the zone name UTC. Unrepresentable `tm_year` values
+return NULL with EOVERFLOW; no host clock, TZ file or timezone lookup is used.
+
+The archive stays byte-pinned. `vendor/musl-exact-string-bounds.patch` selects
+musl's existing scalar fallbacks for strlen, strchrnul and memchr under the
+recorded runtime profile. Their word-at-a-time paths can read beyond a small
+live string before noticing its terminator. Archive and patch provenance are
+recorded; SQLite's source and vectorisation flags are unchanged.

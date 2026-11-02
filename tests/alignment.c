@@ -40,13 +40,14 @@ int main(int argc, char **argv) {
         assert(code==2 && count==1 && bump==3);
         if (!setjmp(fault)) { runtime_calloc(SIZE_MAX/2+1,2); abort(); }
         assert(code==2 && count==1 && bump==3);
-    } else if (argv[1][0]=='p' || argv[1][0]=='e') {
-        limit=argv[1][0]=='p'?3:31;
+    } else if (argv[1][0]=='p' || argv[1][0]=='e' || argv[1][0]=='m') {
+        limit=argv[1][0]=='p'?3:argv[1][0]=='m'?32:31;
         __bennett_rt_alloc(3);
         if (!setjmp(fault)) { runtime_malloc(1); abort(); }
         assert(code==2);
         if (limit==3) assert(count==1 && bump==3);
-        else assert(count==2 && bump==16 && records[1].requested==13);
+        else if (limit==31) assert(count==2 && bump==16 && records[1].requested==13);
+        else assert(count==3 && bump==32 && records[2].requested==16);
     } else {
         const size_t a=_Alignof(max_align_t);
         assert(a==16);
