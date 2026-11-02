@@ -20,7 +20,7 @@ stdio/fmemopen stdio/open_memstream stdio/fread stdio/fclose stdio/fseek stdio/f
 stdio/fgetpos stdio/fsetpos stdio/rewind stdio/fgets stdio/fgetc stdio/getc
 stdio/feof stdio/ferror stdio/clearerr stdio/ungetc stdio/__uflow stdio/__toread stdio/ofl_add
 exit/exit exit/_Exit exit/atexit unistd/write unistd/writev unistd/lseek
-env/getenv thread/pthread_self
+env/getenv thread/pthread_self locale/localeconv legacy/getpagesize
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
 string/memmove string/memchr string/strchrnul string/strchr string/memcmp string/strcmp string/strncmp

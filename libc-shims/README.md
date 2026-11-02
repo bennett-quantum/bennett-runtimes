@@ -97,6 +97,16 @@ Linux CRT, TLS, auxv, or device operation. The driver invokes preparation before
 the whole-program entry; stdio objects and exit-handler lists begin at their
 linked static images. The helper does not reset descriptor-bound model state.
 
+The closure also publishes the unchanged upstream musl `locale/localeconv`
+and `legacy/getpagesize` implementations. The C-locale record contains "."
+as its decimal point, empty grouping/monetary strings and CHAR_MAX for the
+unspecified monetary fields. The x86_64 musl target's page size is 4096,
+matching the prepared libc state. These use the pinned target headers and
+upstream data/code; they make no host locale, sysconf or auxv query. The API
+test checks every lconv field and the page size before and after explicit
+process preparation, with static checked-native O0/O2 builds on both majors.
+Further locale/runtime capabilities remain within brt-zct's full scope.
+
 Comparison `_start` registers its Linux input objects, calls preparation, then
 uses `exit(main(argc, argv, environ))`. A main return and explicit `exit` run
 handlers in reverse registration order and flush buffered stdio once;
