@@ -13,6 +13,7 @@
 #include "llvm/Support/MathExtras.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/TargetParser/Triple.h"
 using namespace llvm;
 int main(int argc,char **argv) {
   if (argc!=3 || StringRef(argv[1])==argv[2]) {
@@ -22,7 +23,7 @@ int main(int argc,char **argv) {
   auto M=parseIRFile(argv[1],error,C);
   if (!M) { error.print(argv[0],errs()); return 1; }
   const DataLayout &DL=M->getDataLayout();
-  if (!StringRef(M->getTargetTriple()).starts_with("x86_64-") ||
+  if (Triple(M->getTargetTriple()).getArch()!=Triple::x86_64 ||
       !DL.isLittleEndian() || DL.getPointerSizeInBits()!=64) {
     errs()<<"this fixture uses the published x86-64 System V va-list row\n"; return 1;
   }

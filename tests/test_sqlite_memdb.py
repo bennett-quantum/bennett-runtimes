@@ -7,12 +7,15 @@ the source-linked LLVM operations; whole-program normalisation is a consumer
 obligation tested by the conformance repo, not emulated here.
 """
 import hashlib
+import importlib.util
 import os
 from pathlib import Path
 import sqlite3
 import subprocess
 import zipfile
 ROOT=Path(__file__).resolve().parents[1]
+spec=importlib.util.spec_from_file_location('varargs_support',ROOT/'tests/varargs_support.py')
+support=importlib.util.module_from_spec(spec); spec.loader.exec_module(support)
 TMP=Path(os.environ['TMPDIR'])/'sqlite-memdb'; TMP.mkdir(parents=True,exist_ok=True)
 archive=ROOT/'vendor/sqlite-amalgamation-3540100.zip'
 assert hashlib.sha3_256(archive.read_bytes()).hexdigest()=='92281c86e2957f9b9305890f9ac04204caa7b677cc868dc326d942689df28e30'
@@ -64,6 +67,8 @@ for major in (18,23):
     scalar=TMP/f'scalar-{major}.bc'
     options=['-passes=scalarizer','-scalarize-load-store'] if major==18 else ['-passes=scalarizer<load-store>']
     run(llvm/'opt',*options,final,'-o',scalar)
+    normal=TMP/f'n23-{major}.bc'
+    support.materialise(major,scalar,normal)
     layout=TMP/f'layout-{major}.ll'; exe=TMP/f'query-{major}'
     # Comparison-only test transport for console calls already inlined by
     # LTO. The production publication still never defines effect markers.
@@ -77,7 +82,7 @@ define void @__bennett_effect_console_write(ptr %p,i64 %n) {
   ret void
 }
 ''')
-    run(ROOT/'scripts/native-check-link',major,scalar,exe,layout)
+    run(ROOT/'scripts/native-check-link',major,normal,exe,layout)
     assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
     assert b'NEEDED' not in run('readelf','-d',exe)
     for i in range(N+2):
