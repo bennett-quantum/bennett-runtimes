@@ -45,6 +45,16 @@ invalid/double free, division/remainder faults (5/6), reached unreachable/trap
 separate private bookkeeping; device shadow frames remain ordinary heap
 allocations. No host allocator or arbitrary allocation-record cap is used.
 
+Implicit byval argument copies are separate callee-local objects, registered
+at entry even in functions without explicit allocas. Their extents use the
+DataLayout allocation size, including scalar and aggregate padding; the frame
+mark removes them on every materialised return while preserving caller
+objects. Each byval call first checks its whole source range, before native
+codegen performs the implicit copy. Nested, empty, unaligned, large, multiple
+argument and escaped-copy cases are tested at O0/O2 on both majors. Native
+fault and infrastructure diagnostics also avoid stack initialisers that O0
+could lower to instrumented memcpy on their private, unregistered stack.
+
 Host mapping/bookkeeping failures print `bennett infrastructure failure:` and
 exit 125. They must be reported as infrastructure failures, separately from
 `bennett runtime fault C` and successful dialect outcomes. Source-definedness

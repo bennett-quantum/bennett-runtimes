@@ -28,6 +28,15 @@ CASES={
  %a = icmp eq i8 %r, 42
  %b = icmp eq i8 %old, 7
  %ok = and i1 %a, %b''',0),
+ 'nonbyte-allocation-padding':('''%r = call i8 @nonbyte_padding(ptr byval(i24) align 1 @four)
+ %ok = icmp eq i8 %r, 42''',0),
+ 'large-copy':('''%r = call i8 @large(ptr byval([4097 x i8]) align 16 @big)
+ %old = load i8,ptr getelementptr ([4097 x i8],ptr @big,i64 0,i64 4096),align 1
+ %a = icmp eq i8 %r,42
+ %b = icmp eq i8 %old,0
+ %ok = and i1 %a,%b''',0),
+ 'source-missing-allocation-padding':('''call void @nonbyte_body_fault(ptr byval(i24) align 1 @three)
+ %ok = icmp eq i1 true, true''',7),
  'two-objects':('''%r = call i64 @two(ptr byval(%V) align 8 %local,ptr byval(i8) align 1 @tiny)
  %ok = icmp eq i64 %r, 26''',0),
  'unaligned-source':('''%heap = call ptr @__bennett_nz_alloc(i64 25)
@@ -66,6 +75,10 @@ CASES={
  %ok = icmp eq i1 true, true''',7),
  'empty-oob':('''call void @empty_overrun(ptr byval(%Empty) null)
  %ok = icmp eq i1 true, true''',7),
+ 'explicit-full-code':('''call void @__bennett_nz_fault(i64 18446744073709551615)
+ %ok = icmp eq i1 true, true''',18446744073709551615),
+ 'explicit-zero':('''call void @__bennett_nz_fault(i64 0)
+ %ok = icmp eq i1 true, true''',4),
 }
 body='''target triple = "x86_64-unknown-linux-musl"
 target datalayout = "e-p:64:64-i64:64-i128:128-n8:16:32:64-S128"
@@ -73,10 +86,14 @@ target datalayout = "e-p:64:64-i64:64-i128:128-n8:16:32:64-S128"
 %Pad = type {i64,i8}
 %Empty = type {}
 @tiny = global i8 9, align 1
+@three = global [3 x i8] zeroinitializer, align 1
+@four = global [4 x i8] zeroinitializer, align 1
+@big = global [4097 x i8] zeroinitializer, align 16
 @bytes = global [16 x i8] c"\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07\\07", align 1
 @escaped = global ptr null, align 8
 declare ptr @__bennett_nz_alloc(i64)
 declare void @__bennett_nz_free(ptr)
+declare void @__bennett_nz_fault(i64)
 define i64 @copy(ptr byval(%V) %arg) noinline {
  %a = load i64, ptr %arg, align 1
  %p1 = getelementptr i8, ptr %arg, i64 8
@@ -108,6 +125,22 @@ define i8 @padding(ptr byval(%Pad) %arg) noinline {
  %p = getelementptr i8, ptr %arg,i64 15
  store i8 42, ptr %p,align 1
  %r = load i8, ptr %p,align 1
+ ret i8 %r
+}
+define i8 @nonbyte_padding(ptr byval(i24) %arg) noinline {
+ %p = getelementptr i8,ptr %arg,i64 3
+ store i8 42,ptr %p,align 1
+ %r = load i8,ptr %p,align 1
+ ret i8 %r
+}
+define void @nonbyte_body_fault(ptr byval(i24) %arg) noinline {
+ call void @__bennett_nz_fault(i64 23)
+ unreachable
+}
+define i8 @large(ptr byval([4097 x i8]) %arg) noinline {
+ %p = getelementptr i8,ptr %arg,i64 4096
+ store i8 42,ptr %p,align 1
+ %r = load i8,ptr %p,align 1
  ret i8 %r
 }
 define i64 @two(ptr byval(%V) %large,ptr byval(i8) %small) noinline {
@@ -164,7 +197,9 @@ for major in (18,23):
     layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 536875008,i64 16384},align 8\n')
     closed=TMP/f'closed-{major}.bc'; checked=TMP/f'checked-{major}.bc'; native=TMP/f'native-{major}.bc'
     run(llvm/'llvm-link',dist/'bennett-runtimes.bc','--override='+str(source),layout,'-o',closed)
+    closed_digest=hashlib.sha256(closed.read_bytes()).hexdigest()
     run(ROOT/'scripts/native-check',major,closed,checked)
+    assert hashlib.sha256(closed.read_bytes()).hexdigest()==closed_digest
     run(llvm/'llvm-link',checked,'--override='+str(dist/'musl-sysroot/lib/native-support.bc'),'-o',native)
     for level in (0,2):
         exe=TMP/f'byval-{major}-O{level}'
@@ -172,10 +207,18 @@ for major in (18,23):
             '-static','-no-pie','-ffreestanding','-fno-builtin','-Wl,-e,_start','-Wl,--no-undefined',native,'-o',exe)
         for i,(name,(_,code)) in enumerate(CASES.items()):
             r=subprocess.run([exe,chr(33+i)],capture_output=True,timeout=10)
-            if code: assert r.returncode==-signal.SIGILL and r.stderr==b'bennett runtime fault 7\n',(major,level,name,r)
+            if code: assert r.returncode==-signal.SIGILL and r.stderr==f'bennett runtime fault {code}\n'.encode(),(major,level,name,r)
             else: assert r.returncode==0 and not r.stderr,(major,level,name,r)
             assert not r.stdout,(major,level,name,r)
         assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
         assert b'NEEDED' not in run('readelf','-d',exe)
         print(f'LLVM{major} O{level}: {len(CASES)} exact byval copy/lifetime/source-range cases PASS',flush=True)
+        badlayout=TMP/f'bad-layout-{major}.ll'; badnative=TMP/f'bad-native-{major}.bc'
+        badlayout.write_text(layout.read_text().replace('i64 1,i64 536875008','i64 2,i64 536875008'))
+        run(llvm/'llvm-link',native,'--override='+str(badlayout),'-o',badnative)
+        badexe=TMP/f'bad-{major}-O{level}'
+        run(llvm/'clang','--target=x86_64-unknown-linux-musl',f'-O{level}','-nostdlib','-nostdinc',
+            '-static','-no-pie','-ffreestanding','-fno-builtin','-Wl,-e,_start','-Wl,--no-undefined',badnative,'-o',badexe)
+        r=subprocess.run([badexe,'!'],capture_output=True,timeout=10)
+        assert r.returncode==125 and r.stderr==b'bennett infrastructure failure: invalid resolved layout\n',(major,level,r)
     assert hashlib.sha256(source.read_bytes()).hexdigest()==digest

@@ -94,7 +94,7 @@ void __bennett_nz_free(void *p) {
  * never malloc or device heap. No fixed record cap: failure is infrastructure.
  * Materialised device frames normally use the ordinary heap history above.
  * These records additionally cover comparison-side argv/envp and native
- * allocas in the freestanding libc closure. */
+ * allocas and implicit byval copies in the freestanding closure. */
 struct object { uintptr_t base; uint64_t size; struct object *next; };
 static struct object *inputs, *stack_objects;
 static struct object *object(void *p,uint64_t n,struct object *next) {

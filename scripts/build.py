@@ -163,6 +163,7 @@ def build(major):
             'materialised_checks': {
                 'adapter': 'scripts/native-check', 'link_adapter': 'scripts/native-check-link',
                 'coverage': ['live-object loads/stores', 'memory-function ranges', 'invalid/double free',
+                             'exact callee-local byval copies and complete caller source ranges',
                              'division/remainder zero and signed overflow', 'explicit fault/unreachable'],
                 'preservation': 'disable libcall/allocation inference after materialisation',
                 'infrastructure_exit_status': 125,
