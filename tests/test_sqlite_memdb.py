@@ -2,9 +2,10 @@
 """Unmodified SQLite/libc component test: cold memdb, exhaustive rowids, RO image.
 
 No driver/ISA execution or full rung-4 conformance is inferred from this test.
-SQLite's compiler vectorisation remains enabled. The native checker accepts
-the source-linked LLVM operations; whole-program normalisation is a consumer
-obligation tested by the conformance repo, not emulated here.
+SQLite's compiler vectorisation remains enabled. Test preparation applies
+N21 scalarisation and the published N23 va-block ABI before native checks;
+the remaining production normalisation and driver/ISA integration are still
+consumer obligations, not inferred from this component test.
 """
 import hashlib
 import importlib.util
@@ -31,6 +32,7 @@ def expected(i):
     _,name,city,age,score=rows[i-1]; z=score*7+age
     rem=z%11 if z>=0 else -((-z)%11)
     return int('an' in name.lower() and city[0].upper() in 'BLM' and 25<=age<=60 and rem==3)
+assert 0<sum(expected(i) for i in range(N+2))<N
 dbpath=TMP/'image.sqlite'; dbpath.unlink(missing_ok=True)
 db=sqlite3.connect(dbpath)
 db.execute('PRAGMA page_size=4096')

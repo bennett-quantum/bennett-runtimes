@@ -45,6 +45,14 @@ invalid/double free, division/remainder faults (5/6), reached unreachable/trap
 separate private bookkeeping; device shadow frames remain ordinary heap
 allocations. No host allocator or arbitrary allocation-record cap is used.
 
+Private global metadata uses a sorted index and prefix maximum end addresses.
+For a range starting at p, the index only considers objects beginning at or
+before p and requires one of their ends to cover the whole access. It preserves
+the original single-object predicate for overlapping or duplicate globals and
+never joins adjacent objects. An exhaustive independent byte-set oracle checks
+that equivalence, including zero and wrapping ranges. The index is private
+native support, outside device identity and heap budgets.
+
 Implicit byval argument copies are separate callee-local objects, registered
 at entry even in functions without explicit allocas. Their extents use the
 DataLayout allocation size, including scalar and aggregate padding; the frame
@@ -124,7 +132,10 @@ power of two, and tests use both the original image and a writable unaligned
 copy. Every one of 1026 rowids starts in a fresh cold process and is checked
 against an independent predicate; an attempted UPDATE must return READONLY
 and preserve input bytes. The stock frontend and LTO vectorise normally;
-N21 scalarisation precedes native memory/fault checks. A comparison-only
+N21 scalarisation and the published N23 explicit va-block layout precede native
+memory/fault checks. Independent test support prepares that varargs phase;
+scalar, pointer, FP, large-byval and va_copy vectors validate its ABI. It is
+not a production normaliser. A comparison-only
 test adapter transports already inlined console markers. This is a static
 libc/memdb component check, not complete driver materialisation, quantum
 execution, generic disk/filesystem support, or full rung-4 conformance.

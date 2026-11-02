@@ -9,6 +9,48 @@ struct allocation { uintptr_t base; uint64_t size, live; };
 static struct allocation *history;
 static uint64_t cursor, entries;
 static int ready;
+struct global_range { uintptr_t base, end, prefix_end; };
+static struct global_range *global_ranges;
+static uint64_t global_count;
+
+static void swap_globals(uint64_t a,uint64_t b) {
+    uintptr_t base=global_ranges[a].base,end=global_ranges[a].end;
+    global_ranges[a].base=global_ranges[b].base;
+    global_ranges[a].end=global_ranges[b].end;
+    global_ranges[b].base=base; global_ranges[b].end=end;
+}
+static void sift_globals(uint64_t root,uint64_t count) {
+    while (root<count/2) {
+        uint64_t child=2*root+1;
+        if (child+1<count && global_ranges[child].base<global_ranges[child+1].base) ++child;
+        if (global_ranges[child].base<=global_ranges[root].base) return;
+        swap_globals(root,child); root=child;
+    }
+}
+static void index_globals(void) {
+    if (!__bennett_rt_native_objects || !&__bennett_rt_native_object_count) return;
+    uint64_t count=__bennett_rt_native_object_count;
+    if (!count) return;
+    if (count>SIZE_MAX/sizeof(*global_ranges))
+        __bennett_rt_native_infrastructure("global object metadata size");
+    long result=__bennett_rt_native_os(9,0,count*sizeof(*global_ranges),3,0x22,-1,0);
+    if ((unsigned long)result>=(unsigned long)-4095)
+        __bennett_rt_native_infrastructure("global object mapping");
+    global_ranges=(void *)result; global_count=count;
+    for (uint64_t i=0;i<count;++i) {
+        uintptr_t base=(uintptr_t)__bennett_rt_native_objects[i].base;
+        uint64_t size=__bennett_rt_native_objects[i].size;
+        global_ranges[i].base=base;
+        global_ranges[i].end=size>UINTPTR_MAX-base?UINTPTR_MAX:base+size;
+    }
+    for (uint64_t i=count/2;i;--i) sift_globals(i-1,count);
+    for (uint64_t end=count;end>1;--end) { swap_globals(0,end-1); sift_globals(0,end-1); }
+    uintptr_t end=0;
+    for (uint64_t i=0;i<count;++i) {
+        if (global_ranges[i].end>end) end=global_ranges[i].end;
+        global_ranges[i].prefix_end=end;
+    }
+}
 
 /* Exit status 125 and this distinct prefix identify host setup failure. Such
  * a result is never a dialect fault or a successful comparison outcome. */
@@ -61,6 +103,7 @@ static void initialise(void) {
             __bennett_rt_native_infrastructure("allocation history mapping");
         history=(void *)p;
     }
+    index_globals();
     ready=1;
 }
 void *__bennett_nz_alloc(uint64_t n) {
@@ -144,12 +187,16 @@ __attribute__((noinline)) void __bennett_rt_native_check(const void *address,uin
         if (r && r->live && contains(r->base,r->size,p,n)) return;
         __bennett_nz_fault(7);
     }
-    if (__bennett_rt_native_objects && &__bennett_rt_native_object_count) {
-        for (uint64_t i=0;i<__bennett_rt_native_object_count;++i) {
-            const struct bennett_native_object *r=__bennett_rt_native_objects+i;
-            if (contains((uintptr_t)r->base,r->size,p,n)) return;
-        }
+    /* Among objects beginning at/before p, the greatest end belongs to one
+     * actual object. Requiring that end to cover p+n is exactly the original
+     * single-object predicate, including overlapping/duplicate globals; it
+     * never joins adjacent objects into a larger allowed interval. */
+    uint64_t lo=0,hi=global_count;
+    while (lo<hi) {
+        uint64_t mid=lo+(hi-lo)/2;
+        if (global_ranges[mid].base<=p) lo=mid+1; else hi=mid;
     }
+    if (lo && p+n<=global_ranges[lo-1].prefix_end) return;
     for (struct object *r=stack_objects;r;r=r->next)
         if (contains(r->base,r->size,p,n)) return;
     for (struct object *r=inputs;r;r=r->next)
