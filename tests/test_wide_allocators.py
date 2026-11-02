@@ -21,6 +21,14 @@ for major in (18,23):
     llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
     names={l.split()[-1] for l in run(llvm/'llvm-nm','--defined-only',dist/'bennett-runtimes.bc').decode().splitlines() if l.split()}
     assert required<=names,('missing production allocators',sorted(required-names))
+    ir=run(llvm/'llvm-dis',dist/'bennett-runtimes.bc','-o','-').decode()
+    import re
+    fresh=required-{'posix_memalign','__rust_realloc','__rust_dealloc'}
+    for name in fresh:
+        definition=next(l for l in ir.splitlines() if l.startswith('define ') and '@'+name+'(' in l)
+        group=re.search(r'#(\d+)',definition)[1]
+        attributes=next(l for l in ir.splitlines() if l.startswith('attributes #'+group+' ='))
+        assert 'allockind("alloc")' in attributes,(name,attributes)
     layout=TMP/f'layout-{major}.ll'
     # Page aligned but deliberately not 8192 aligned: the initial heap base
     # is not known to ordinary C until a primitive allocation returns it.

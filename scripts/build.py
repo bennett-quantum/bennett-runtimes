@@ -74,6 +74,11 @@ def build(major):
         text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
         logical = str(source.relative_to(scratch)) if source.is_relative_to(scratch) else str(source.relative_to(ROOT))
         text = re.sub(r'^source_filename = .*', f'source_filename = "{logical}"', text, flags=re.M)
+        # Duplicating strings allocates a fresh object of a runtime-computed
+        # extent; neither bound argument is an exact allocsize promise.
+        for name in ('strdup','strndup'):
+            text = re.sub(rf'^(define .*@{name}\([^\n]*?) #',
+                          r'\1 allockind("alloc") #', text, flags=re.M)
         ll.write_text(text)
         bc=ll.with_suffix('.bc')
         run(llvm/'llvm-as', ll, '-o', bc)

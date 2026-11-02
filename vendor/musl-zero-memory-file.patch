@@ -1,0 +1,26 @@
+diff --git a/src/stdio/fmemopen.c b/src/stdio/fmemopen.c
+--- a/src/stdio/fmemopen.c
++++ b/src/stdio/fmemopen.c
+@@ -63,7 +63,12 @@ static size_t mwrite(FILE *f, const unsigned char *buf, size_t len)
+ 	}
+ 	if (c->mode == 'a') c->pos = c->len;
+ 	rem = c->size - c->pos;
+-	if (len > rem) len = rem;
++	if (len > rem) {
++		len = rem;
++		errno = ENOSPC;
++		f->flags |= F_ERR;
++		f->wpos = f->wbase = f->wend = 0;
++	}
+ 	memcpy(c->buf+c->pos, buf, len);
+ 	c->pos += len;
+ 	if (c->pos > c->len) {
+@@ -104,7 +104,7 @@ FILE *fmemopen(void *restrict buf, size_t size, const char *restrict mode)
+ 	if (!plus) f->f.flags = (*mode == 'r') ? F_NOWR : F_NORD;
+ 	if (*mode == 'r') f->c.len = size;
+ 	else if (*mode == 'a') f->c.len = f->c.pos = strnlen(buf, size);
+-	else if (plus) *f->c.buf = 0;
++	else if (plus && size) *f->c.buf = 0;
+ 
+ 	f->f.read = mread;
+ 	f->f.write = mwrite;

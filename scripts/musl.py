@@ -1,4 +1,4 @@
-"""Offline, pinned musl slice builder; upstream files remain unmodified."""
+"""Offline pinned musl slice builder with explicitly recorded source patches."""
 import hashlib
 from pathlib import Path
 import shutil
@@ -8,7 +8,7 @@ import tarfile
 VERSION='1.2.5'
 URL='https://musl.libc.org/releases/musl-1.2.5.tar.gz'
 SHA='a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4'
-PATCHES=['vendor/musl-exact-string-bounds.patch']
+PATCHES=['vendor/musl-exact-string-bounds.patch','vendor/musl-zero-memory-file.patch']
 # Explicit closure, including real vfprintf (not just the optimised puts route),
 # wide conversions, stdio flushing and exit handlers. No musl allocator objects.
 FILES='''stdio/printf stdio/vfprintf stdio/puts stdio/fputs stdio/fwrite
@@ -16,6 +16,9 @@ stdio/__towrite stdio/__overflow stdio/__stdio_write
 stdio/__stdout_write stdio/__stdio_close stdio/__stdio_seek stdio/stdout
 stdio/stderr stdio/__stdio_exit stdio/__lockfile stdio/ofl stdio/fflush
 stdio/setvbuf stdio/putc stdio/fputc stdio/putchar stdio/__lockfile
+stdio/fmemopen stdio/open_memstream stdio/fread stdio/fclose stdio/fseek stdio/ftell
+stdio/fgetpos stdio/fsetpos stdio/rewind stdio/fgets stdio/fgetc stdio/getc
+stdio/feof stdio/ferror stdio/clearerr stdio/ungetc stdio/__uflow stdio/__toread stdio/ofl_add
 exit/exit exit/_Exit exit/atexit unistd/write unistd/writev unistd/lseek
 env/getenv thread/pthread_self
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock

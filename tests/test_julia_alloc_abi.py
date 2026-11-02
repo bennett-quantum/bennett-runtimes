@@ -62,10 +62,12 @@ probe=TMP/'probe.ll'
 probe.write_text('''@safe = global i64 0, align 8
 @tls = global {i64,i64,ptr} {i64 0,i64 0,ptr @safe}, align 8
 @gcstack = global {i64,i64,ptr} {i64 0,i64 0,ptr @tls}, align 8
+@observed = global ptr null, align 8
 declare ptr @ijl_gc_small_alloc(ptr,i32,i32,i64)
 '''+body+'''
 define i32 @main() {
   %p = call swiftcc ptr @julia_allocation_body(ptr swiftself @gcstack, i64 123456789)
+  store volatile ptr %p, ptr @observed, align 8
   %x = load i64, ptr %p, align 8
   %h = getelementptr i8, ptr %p, i64 -8
   %t = load i64, ptr %h, align 8
@@ -78,8 +80,12 @@ define i32 @main() {
 ''')
 layout=TMP/'layout.ll'
 layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 536875008,i64 65536}, align 8\n')
-exe=TMP/'probe'
-run(ROOT/'scripts/native-check-link',23,probe,exe,layout)
-subprocess.run([exe],check=True,timeout=10)
-assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
-print('Julia 1.13 frontend allocation signatures LLVM18/23; actual boxed method native checked LLVM23 PASS')
+linked=TMP/'linked.bc'; postlink=TMP/'postlink.bc'
+run(llvm/'llvm-link',probe,ROOT/'dist/llvm23/bennett-runtimes.bc','--only-needed','-o',linked)
+run(llvm/'opt','-passes=lto<O3>',linked,'-o',postlink)
+for name,source in [('ordinary',probe),('lto',postlink)]:
+    exe=TMP/name
+    run(ROOT/'scripts/native-check-link',23,source,exe,layout)
+    subprocess.run([exe],check=True,timeout=10)
+    assert not run(llvm/'llvm-nm','--undefined-only',exe).strip()
+print('Julia 1.13 frontend allocation signatures LLVM18/23; actual boxed method before/after LTO native checked LLVM23 PASS')
