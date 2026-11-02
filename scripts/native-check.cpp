@@ -58,6 +58,12 @@ int main(int argc, char **argv) {
     if (S.isScalable()) report_fatal_error("unmaterialised scalable access");
     return S.getFixedValue();
   };
+  auto allocationSize=[&](Type *T) -> uint64_t {
+    if (!T || !T->isSized()) report_fatal_error("unsized native object");
+    auto S=DL.getTypeAllocSize(T);
+    if (S.isScalable()) report_fatal_error("unmaterialised scalable object");
+    return S.getFixedValue();
+  };
   auto range=[&](Instruction *I, Value *address,Value *size) {
     IRBuilder<> B(I);
     B.CreateCall(check,{B.CreatePointerCast(address,P),B.CreateZExtOrTrunc(size,I64)});
@@ -69,10 +75,11 @@ int main(int argc, char **argv) {
   for (Function &F:*M) {
     if (F.isDeclaration()) continue;
     SmallVector<Instruction *,256> original;
-    bool hasAlloca=false;
+    bool hasStackObject=false;
     for (Instruction &I:instructions(F)) {
-      original.push_back(&I); hasAlloca|=isa<AllocaInst>(I);
+      original.push_back(&I); hasStackObject|=isa<AllocaInst>(I);
     }
+    for (Argument &A:F.args()) hasStackObject|=A.hasByValAttr();
     F.removeFnAttr(Attribute::Memory);
     F.removeFnAttr(Attribute::Speculatable);
     F.removeFnAttr(Attribute::WillReturn);
@@ -81,12 +88,27 @@ int main(int argc, char **argv) {
     F.removeFnAttr(Attribute::NoFree);
     F.addFnAttr("no-builtins");
     Value *mark=nullptr;
-    if (hasAlloca) {
+    if (hasStackObject) {
       IRBuilder<> B(&*F.getEntryBlock().getFirstInsertionPt());
       mark=B.CreateCall(enter,{},"native.frame");
+      // byval creates a distinct ABI-owned copy even when there is no
+      // explicit alloca. Include DataLayout tail padding, but no envelope
+      // covering other arguments or the native stack. The existing mark
+      // removes each copy on every materialised return from this callee.
+      for (Argument &A:F.args())
+        if (A.hasByValAttr())
+          B.CreateCall(add,{B.CreatePointerCast(&A,P),
+                            B.getInt64(allocationSize(A.getParamByValType()))});
     }
     for (Instruction *I:original) {
       IRBuilder<> B(I);
+      // The caller's implicit ABI read happens before the callee can check
+      // its copy. Validate the complete source, including padding, before
+      // native codegen emits that read (null/short/dead sources fault 7).
+      if (auto *CB=dyn_cast<CallBase>(I))
+        for (unsigned a=0;a<CB->arg_size();++a)
+          if (Type *T=CB->getParamByValType(a))
+            range(I,CB->getArgOperand(a),B.getInt64(allocationSize(T)));
       if (auto *L=dyn_cast<LoadInst>(I)) range(I,L->getPointerOperand(),B.getInt64(sizeOf(L->getType())));
       else if (auto *S=dyn_cast<StoreInst>(I)) range(I,S->getPointerOperand(),B.getInt64(sizeOf(S->getValueOperand()->getType())));
       else if (auto *A=dyn_cast<AtomicRMWInst>(I)) range(I,A->getPointerOperand(),B.getInt64(sizeOf(A->getValOperand()->getType())));

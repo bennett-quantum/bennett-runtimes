@@ -13,7 +13,7 @@ static int ready;
 /* Exit status 125 and this distinct prefix identify host setup failure. Such
  * a result is never a dialect fault or a successful comparison outcome. */
 _Noreturn void __bennett_rt_native_infrastructure(const char *message) {
-    const char prefix[]="bennett infrastructure failure: ";
+    static const char prefix[]="bennett infrastructure failure: ";
     size_t n=0; while (message[n]) ++n;
     __bennett_rt_native_os(1,2,(long)prefix,sizeof(prefix)-1,0,0,0);
     __bennett_rt_native_os(1,2,(long)message,n,0,0,0);
@@ -25,8 +25,13 @@ _Noreturn void __bennett_rt_native_infrastructure(const char *message) {
  * Neither musl nor the console model is called on a failing path. */
 _Noreturn void __bennett_nz_fault(uint64_t code) {
     if (!code) code=4; /* ISA effective cause; zero never denotes a fault code */
-    char text[64] = "bennett runtime fault ";
-    char digits[20]; size_t n=0, len=22;
+    static const char prefix[]="bennett runtime fault ";
+    /* O0 codegen must not lower a stack-array initializer to the checked
+     * device memcpy: this private diagnostic stack is intentionally outside
+     * device-object metadata. Volatile byte stores prevent that recursion. */
+    volatile char text[64];
+    for (size_t i=0;i<sizeof prefix-1;++i) text[i]=prefix[i];
+    char digits[20]; size_t n=0, len=sizeof prefix-1;
     do { digits[n++]=(char)('0'+code%10); code/=10; } while(code);
     /* prefix is 22 bytes, excluding its terminating NUL. */
     while(n) text[len++]=digits[--n];
