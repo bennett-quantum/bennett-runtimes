@@ -21,7 +21,7 @@ env/getenv thread/pthread_self
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
 string/memmove string/memchr string/strchrnul string/strchr string/memcmp string/strcmp string/strncmp
-string/bcmp string/strspn string/strcspn string/strrchr string/memrchr time/__secs_to_tm
+string/bcmp string/strspn string/strcspn string/strrchr string/memrchr string/strdup string/strndup time/__secs_to_tm
 multibyte/wctomb multibyte/wcrtomb ctype/iswprint math/frexpl math/frexp math/__fpclassifyl math/__signbitl errno/strerror locale/__lctrans locale/__mo_lookup
 '''.split()
 

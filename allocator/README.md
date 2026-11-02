@@ -4,9 +4,12 @@ Deterministic allocator used by compiled programs: fixed base, monotonic bump, `
 The C wrappers round `max(n,1)` to `_Alignof(max_align_t)` with overflow
 checked before allocation. Runtime code that needs an exact byte allocation
 uses `__bennett_rt_alloc(n)`, which calls the unchanged `__bennett_nz_alloc(n)`
-primitive and tracks its next byte address. If an odd runtime allocation
-precedes a C allocation, the wrapper requests the minimal alignment padding as
-an ordinary, separately charged primitive allocation. Padding and rounded
+primitive and tracks its result. Direct primitive users can advance the heap
+without updating this cursor. Each C allocation therefore first requests an
+ordinary zero-size allocation (one physical byte), then the minimal padding
+from the returned next byte address. This also handles first requests with
+alignment stronger than the heap base's guaranteed page alignment. The probe,
+padding and rounded
 extents participate in the same nonreclaiming allocation history in both
 builds. The cursor is ordinary device memory restored by reversal.
 
@@ -26,3 +29,13 @@ faults with code 2. Null input uses malloc; zero size uses the same unique
 allocation policy as malloc(0). The primitive supplies zero fill, so the wrapper
 avoids a redundant byte-by-byte clearing loop. Actual published allocator/list
 stores and primitive history are tested with reversal and identical execution.
+
+`aligned_alloc`, `memalign` and `posix_memalign` use requested power-of-two
+alignment (at least max_align_t) and the same ABI-rounded payload extent.
+Invalid C alignment returns EINVAL; aligned_alloc also validates size is a
+multiple of alignment. posix_memalign leaves its output untouched on error.
+Upstream musl strdup/strndup copy into this allocator. C++ scalar/array new
+supports ordinary, nothrow and aligned entry points and the matching delete
+forms; heap budget exhaustion follows the dialect's fault-2 policy. Rust
+allocation is zero-filled, and realloc preserves the supplied alignment while
+copying only the live record's old requested prefix. No host allocator is used.

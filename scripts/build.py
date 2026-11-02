@@ -12,7 +12,7 @@ musl = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/musl/syscall.c']
+SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/musl/syscall.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
@@ -49,7 +49,15 @@ def build(major):
             assert count==1, 'missing canonical fenv definition'
         # Clang C has no source attribute for LLVM allockind. §5.1 requires it;
         # add only alloc (NOT uninitialized) and allocsize to the two definitions.
-        for name, indices in [('malloc', '0'), ('calloc', '0,1')]:
+        allocators={'malloc':'0','calloc':'0,1',
+                    '__bennett_rt_aligned_alloc':'1','memalign':'1','aligned_alloc':'1',
+                    '__rust_alloc':'0','__rust_alloc_zeroed':'0',
+                    '_Znwm':'0','_Znam':'0','_ZnwmRKSt9nothrow_t':'0','_ZnamRKSt9nothrow_t':'0',
+                    '_ZnwmSt11align_val_t':'0','_ZnamSt11align_val_t':'0',
+                    '_ZnwmSt11align_val_tRKSt9nothrow_t':'0','_ZnamSt11align_val_tRKSt9nothrow_t':'0',
+                    'jl_gc_alloc':'1','ijl_gc_alloc_typed':'1','julia.gc_alloc_obj':'1',
+                    'ijl_gc_small_alloc':'2','ijl_gc_big_alloc':'1'}
+        for name, indices in allocators.items():
             text = re.sub(rf'^(define .*@{name}\([^\n]*?) #',
                           rf'\1 allockind("alloc") allocsize({indices}) #',
                           text, flags=re.M)
@@ -129,9 +137,13 @@ def build(major):
                             'native_start': 'register input objects; prepare; exit(main(argc, argv, environ))',
                             'device_entry': 'driver prepares vectors and invokes preparation before entry; no Linux CRT/TLS/auxv'},
         'c_allocator': {'payload': 'max_align_t-rounded, primitive zero fill',
+                        'requested_alignment': 'charged zero-size address probe per allocation, then minimal padding; ABI-rounded payload extent',
                         'bookkeeping': 'explicit ordinary 32-byte allocation per peak simultaneous C allocation; live pool slots reused as data',
                         'realloc': 'always move; copy min(old requested size,new size); free old after copy; zero uses unique malloc(0) policy',
                         'history': 'payload, padding and bookkeeping charged identically; no payload reuse or record cap'},
+        'language_allocators': {'cpp': 'Itanium scalar/array, nothrow, aligned, sized and unsized delete',
+                               'rust': 'size/alignment ABI; realloc retains requested alignment',
+                               'julia': '1.13 tagged nonmoving allocations; 8-byte preceding header, 16-byte aligned payload; full size-argument forward access window also retained'},
         'musl': {'version': musl.VERSION, 'url': musl.URL, 'source_sha256': musl.SHA,
                  'patches': {p: sha(ROOT/p) for p in musl.PATCHES},
                  'files': sorted(set(musl.FILES)), 'flags': [re.sub(str(scratch), '<build>', re.sub(str(out), '<dist>', f)) for f in musl_flags]},

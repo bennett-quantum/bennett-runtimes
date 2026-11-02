@@ -18,10 +18,9 @@ struct c_allocation { void *base; uint64_t requested, live; struct c_allocation 
 _Static_assert(sizeof(struct c_allocation)==32,"C allocation record layout");
 static struct c_allocation *live_allocations, *spare_records;
 
-/* All runtime primitive allocation sites use this entry so the wrapper knows
- * the exact next byte address. Initially the published heap base is page
- * aligned. This state is ordinary device memory and reverses with the caller.
- * Direct primitive users retain the exact byte-bump ABI. */
+/* Tracks the result of an ordinary primitive request. This is a local cursor,
+ * never an authoritative view of direct primitive users' allocation history.
+ * It is ordinary device memory and reverses with the caller. */
 static uintptr_t next_byte;
 void *__bennett_rt_alloc(uint64_t n) {
     void *p = __bennett_nz_alloc(n);
@@ -29,14 +28,27 @@ void *__bennett_rt_alloc(uint64_t n) {
     return p;
 }
 
-void *malloc(size_t n) {
-    const size_t a = _Alignof(max_align_t);
+void *__bennett_rt_aligned_alloc(size_t a,size_t n) {
+    if (!a || (a&(a-1))) {
+        __bennett_nz_fault(4);
+        __builtin_unreachable();
+    }
+    if (a<_Alignof(max_align_t)) a=_Alignof(max_align_t);
+    /* Requested alignment controls the starting address. The allocation's
+     * byte extent retains the C ABI's max_align_t rounding. */
+    const size_t unit = _Alignof(max_align_t);
     size_t extent = n ? n : 1;
-    if (extent > SIZE_MAX - (a - 1)) {
+    if (extent > SIZE_MAX - (unit - 1)) {
         __bennett_nz_fault(2);
         __builtin_unreachable();
     }
-    extent = (extent + a - 1) / a * a;
+    extent = (extent + unit - 1) / unit * unit;
+    /* Direct primitive users can have advanced the heap since our last call,
+     * and §19.5 only guarantees page alignment of the initial base. Refresh
+     * through an ordinary charged zero allocation (physical extent one), then
+     * request the minimal padding from that exact next byte. No private ISA
+     * cursor/query or native-only state is used. */
+    __bennett_rt_alloc(0);
     size_t padding = (-(uintptr_t)next_byte) % a;
     if (padding) __bennett_rt_alloc(padding);
     void *p = __bennett_rt_alloc(extent);
@@ -48,6 +60,8 @@ void *malloc(size_t n) {
     live_allocations=r;
     return p;
 }
+
+void *malloc(size_t n) { return __bennett_rt_aligned_alloc(_Alignof(max_align_t),n); }
 
 void *calloc(size_t count, size_t size) {
     if (size && count > SIZE_MAX / size) {
@@ -72,8 +86,8 @@ void free(void *p) {
     /* Runtime raw allocations can be freed without a C allocation record. */
 }
 
-void *realloc(void *p,size_t n) {
-    if (!p) return malloc(n);
+void *__bennett_rt_aligned_realloc(void *p,size_t n,size_t a) {
+    if (!p) return __bennett_rt_aligned_alloc(a,n);
     struct c_allocation *r=live_allocations;
     while (r && r->base!=p) r=r->next;
     if (!r || !r->live) {
@@ -84,8 +98,12 @@ void *realloc(void *p,size_t n) {
     if (count>n) count=n;
     /* Always move; zero uses malloc(0)'s unique allocation policy. Failed
      * growth has not freed the old payload. */
-    void *q=malloc(n);
+    void *q=__bennett_rt_aligned_alloc(a,n);
     __bennett_rt_memmove(q,p,count);
     free(p);
     return q;
+}
+
+void *realloc(void *p,size_t n) {
+    return __bennett_rt_aligned_realloc(p,n,_Alignof(max_align_t));
 }

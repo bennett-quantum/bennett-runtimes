@@ -38,10 +38,10 @@ void __bennett_nz_free(void *p) {
 }
 static void run(void) {
     unsigned char *p=test_malloc(3), *q=test_calloc(5,3);
-    assert(p==heap && q==heap+48);
+    assert(p==heap+16 && q==heap+80);
     __bennett_rt_memset(p,0x5a,3);
     unsigned char *r=test_realloc(p,35);
-    assert(r==heap+96 && cursor==176 && count==6);
+    assert(r==heap+144 && cursor==224 && count==12);
     for (unsigned i=0;i<3;i++) assert(r[i]==0x5a);
     for (unsigned i=3;i<35;i++) assert(r[i]==0);
     test_free(q);

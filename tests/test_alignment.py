@@ -12,6 +12,6 @@ for major in (18,23):
                     '-Dcalloc=runtime_calloc','-Dfree=runtime_free','-Drealloc=runtime_realloc','-c',ROOT/'src/allocator/bump.c','-o',obj],check=True)
     exe=TMP/f'alignment-{major}'
     subprocess.run([clang,'-O2',ROOT/'tests/alignment.c',obj,'-o',exe],check=True)
-    for case in ('history','overflow','padding-budget','extent-budget','metadata-budget'):
+    for case in ('history','overflow','padding-budget','extent-budget','metadata-budget','first-strong-alignment'):
         subprocess.run([exe,case],check=True,timeout=5)
     print(f'LLVM {major}: aligned/odd/zero requests, padding history/reversal, overflow and budget boundaries PASS')

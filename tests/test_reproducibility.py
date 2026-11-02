@@ -8,7 +8,7 @@ ROOT=Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory(prefix='relocated-',dir=ROOT/'.tmp') as tmp:
     source=Path(tmp)/'source'
     source.mkdir()
-    for name in ('scripts','src','vendor'):
+    for name in ('scripts','src','vendor','julia-shim'):
         shutil.copytree(ROOT/name,source/name,ignore=shutil.ignore_patterns('__pycache__'))
     shutil.copyfile(ROOT/'SPEC_VERSIONS.toml',source/'SPEC_VERSIONS.toml')
     for major in (18,23):
