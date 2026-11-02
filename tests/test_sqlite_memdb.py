@@ -12,6 +12,7 @@ import importlib.util
 import os
 from pathlib import Path
 import sqlite3
+import signal
 import subprocess
 import zipfile
 ROOT=Path(__file__).resolve().parents[1]
@@ -47,9 +48,20 @@ flags=['-DSQLITE_THREADSAFE=0','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OS_OTHER
        '-DSQLITE_TEMP_STORE=3','-DSQLITE_DEFAULT_MEMSTATUS=0','-DSQLITE_OMIT_SHARED_CACHE',
        '-DSQLITE_OMIT_DEPRECATED','-DSQLITE_DQS=0']
 def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE,timeout=180)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
+    # A checked whole SQLite module is a substantial backend compile. Bound
+    # the whole tool process group, including clang/linker descendants.
+    command=list(map(str,args))
+    with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True) as p:
+        try: out,err=p.communicate(timeout=360)
+        except BaseException:
+            os.killpg(p.pid,signal.SIGKILL); p.wait(); raise
+        if p.returncode:
+            print(err.decode(errors='replace'))
+            raise subprocess.CalledProcessError(p.returncode,command,out,err)
+        return out
+def terminate(signum,frame):
+    raise SystemExit(124)
+signal.signal(signal.SIGTERM,terminate)
 for major in (18,23):
     llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'; objects=[]
     for source in (TMP/'sqlite3.c',ROOT/'tests/sqlite_nofs.c',ROOT/'tests/sqlite_memdb.c'):

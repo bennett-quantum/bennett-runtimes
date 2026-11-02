@@ -2,7 +2,7 @@
 set -euo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
 root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
-export TMPDIR="$root/.tmp"
+export TMPDIR="${TMPDIR:-$root/.tmp}"
 mkdir -p "$TMPDIR"
 rebuild="$(mktemp -d "$TMPDIR/reproduce-XXXXXXXX")"
 trap 'rm -rf "$rebuild"' EXIT
