@@ -24,5 +24,6 @@ arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/b
 extra=()
 if [ "$#" -eq 5 ]; then extra+=("-Wl,-T,$5"); fi
 "$llvm/clang" --target=x86_64-unknown-linux-musl -O2 -nostdlib -nostdinc -static -no-pie \
+  -Xclang -disable-llvm-passes \
   -ffreestanding -fno-builtin -Wl,-e,_start -Wl,--no-undefined \
   "$scratch/native.bc" "${extra[@]}" -o "$output"

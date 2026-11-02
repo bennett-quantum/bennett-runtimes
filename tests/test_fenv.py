@@ -15,7 +15,7 @@ for major in (18,23):
     ir=run(llvm/'llvm-dis',dist/'bennett-runtimes.bc','-o','-').decode()
     definitions=re.findall(r'^@__bennett_rt_fenv = .*$',ir,re.M)
     assert len(definitions)==1 and re.search(r'global \{ i32, i32 \} zeroinitializer, section "\.data\.__bennett_rt_fenv", align 4(?:, !guid !\d+)?$',definitions[0]),definitions
-    arith=ROOT.parent/f'bennett-arith/dist/llvm{major}/bennett-arith.bc'
+    arith=Path(os.environ.get('BENNETT_ARITH_ROOT',ROOT.parent/'bennett-arith'))/f'dist/llvm{major}/bennett-arith.bc'
     a=run(llvm/'llvm-dis',arith,'-o','-').decode()
     assert re.search(r'^@__bennett_rt_fenv = external global \{ i32, i32 \}',a,re.M)
     flags=['--target=x86_64-unknown-linux-musl','-O2','-ffreestanding','-fno-builtin',

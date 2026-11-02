@@ -165,7 +165,7 @@ def build(major):
                 'coverage': ['live-object loads/stores', 'memory-function ranges', 'invalid/double free',
                              'exact callee-local byval copies and complete caller source ranges',
                              'division/remainder zero and signed overflow', 'explicit fault/unreachable'],
-                'preservation': 'disable libcall/allocation inference after materialisation',
+                'preservation': 'disable libcall/allocation inference; native-check-link skips repeat IR optimisation, retaining O2 machine code generation',
                 'infrastructure_exit_status': 125,
                 'source_definedness': 'separate original-input classifier, not inferred from materialised checks',
             },
