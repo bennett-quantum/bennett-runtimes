@@ -1,7 +1,8 @@
-# Console device model (dialect 0.2.10 @023f5a7)
+# Ordinary runtime device models
 
-`src/device/console.c` is ordinary C, compiled with LLVM 18 and 23 into each
-combined runtime. No production effect marker is defined.
+`src/device/console.c` and `src/device/models.c` are ordinary C, compiled with
+LLVM 18 and 23 into each combined runtime. The clock, entropy and block models
+implement published dialect 0.2.12 §11.3. No production effect marker is defined.
 
 ## Routes and tiers
 
@@ -89,3 +90,58 @@ This is the native console twin, not an effect-marker definition. The ordinary
 L/private console function above is unchanged. Exit uses Linux exit_group;
 unknown operations still fault 8. Heap mapping and fault diagnostics use a
 separate private Linux transport; user syscalls cannot access it through musl.
+
+## Clock, entropy and block state
+
+The selected module's wrapper prepares these globals outside control, just as
+it prepares console state. All globals initially contain zero. Names below
+have prefix `__bennett_dev_`; pointers and uint64 fields align to 8, uint32 to 4.
+
+| Global suffix | Type | Initial binding value |
+|---|---|---|
+| `clock_bound` | uint32 | 1 when bound |
+| `clock_c` | uint64 | descriptor clock value |
+| `entropy_bound` | uint32 | 1 when bound |
+| `entropy_base` | pointer to preserved bytes | entropy image |
+| `entropy_size` | uint64 | entropy image byte count |
+| `entropy_pos` | uint64 | 0 |
+| `block_bound` | uint32 | 1 when bound |
+| `block_base` | pointer to preserved bytes | disk image |
+| `block_nsect` | uint64 | disk image sector count |
+| `block_overlay` | pointer | null |
+
+`clock_read(p)` stores eight little-endian bytes of c, allowing unaligned p,
+then increments c modulo 2^64. `entropy_read(p,len)` copies the next len bytes
+and advances pos; len greater than size-pos faults 10 before any mutation or
+destination access. Empty entropy reads change nothing. A corrupt pos>size
+faults 7. Every operation on an unbound model faults 8, including empty reads.
+
+`block_read(s,p)` copies a present overlay sector, otherwise image sector s
+when s<nsect, otherwise 512 zero bytes. `block_write(s,p)` creates or updates
+an overlay sector, including sectors beyond the initial image and UINT64_MAX.
+It never changes the image. The sparse list has no fixed entry/sector cap:
+each first write uses ordinary `malloc` for a 528-byte record, containing
+uint64 sector at offset 0, next pointer at 8 and 512 bytes at 16. Repeated
+writes reuse that record. Its payload, allocator bookkeeping and heap budget
+are ordinary runtime operations. The wrapper only sets the head to null; it
+does not inspect private record contents. Missing nonempty buffers and
+unrepresentable image offsets fault 7. The materialiser checks full logical
+memory ranges; these C functions do not admit a broad host address range.
+
+These globals and functions belong to the selected module's runtime closure.
+They impose no process-wide launch/CRT or whole-binary requirement. A mixed
+native/device fat object can bind the selected module's state while its host
+code retains its own libc and host effects (bennett-4ht). Descriptor preparation,
+R effect routing, action undo-state bounds and controlled inversion remain
+compiler/driver/executor obligations. There is no additional production tape
+or native host device access in these models.
+
+`tests/test_devices.py` instruments stores in the published device and
+allocator bitcode with a test-only preimage recorder. Independent vectors
+cover clock wrap and byte order, every entropy position/length across a
+17-byte tape, fault preflight, immutable disk sectors, absent/distant sectors,
+repeated writes and full state/heap restoration followed by repeat execution.
+An independent static checked-native harness exercises the same publication
+and rejects short clock/entropy/sector/image objects with fault 7. This is
+runtime component evidence; the test journal does not establish ISA history
+or whole-program coherent/action acceptance.
