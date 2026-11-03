@@ -120,7 +120,7 @@ for major in (18,23):
         '\n'.join(adapters)+'\ndeclare i32 @__bennett_rt_integer_op(ptr,ptr,ptr,ptr,i32,i32,i32)\ndeclare void @llvm.trap()\ndefine void @__bennett_nz_fault(i64 %c) { call void @llvm.trap()\n unreachable }\n')
     linked=TMP/f'linked-{major}.bc'; library=TMP/f'helpers-{major}.so'
     run(llvm/'llvm-link',adapter,emitted,publication,'--only-needed','-o',linked)
-    run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined',linked,'-o',library)
+    run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined,-Bsymbolic',linked,'-o',library)
     assert not run(llvm/'llvm-nm','--undefined-only',library).strip()
     assert b'NEEDED' not in run('readelf','-d',library)
     lib=ctypes.CDLL(str(library)); rng=random.Random(0xB377E77); count=0
@@ -168,7 +168,7 @@ define void @test_maximum(ptr %d,ptr %a) {{
 ''')
     maximum_library=TMP/f'maximum-{major}.so'
     run(llvm/'llvm-link',adapter,emitted,publication,'--only-needed','-o',linked)
-    run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined',linked,'-o',maximum_library)
+    run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined,-Bsymbolic',linked,'-o',maximum_library)
     assert not run(llvm/'llvm-nm','--undefined-only',maximum_library).strip()
     maximum_module=ctypes.CDLL(str(maximum_library)); f=maximum_module.test_maximum
     f.argtypes=[ctypes.c_void_p,ctypes.c_void_p]; f.restype=None
