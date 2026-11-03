@@ -12,7 +12,7 @@ musl = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c', 'src/runtime/shadow.c', 'src/runtime/integer_core.c', 'src/runtime/integer_arithmetic.c']
+SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c', 'src/runtime/shadow.c', 'src/runtime/integer_core.c', 'src/runtime/integer_arithmetic.c', 'src/runtime/control.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
@@ -47,6 +47,10 @@ def build(major):
             text, count = re.subn(r'(@__bennett_rt_fenv = .*?global )%struct.bennett_fenv( zeroinitializer, section "\.data\.__bennett_rt_fenv", align 4)',
                                   r'\1{ i32, i32 }\2',text)
             assert count==1, 'missing canonical fenv definition'
+        if source=='src/musl/syscall.c':
+            text,count=re.subn(r'(@__bennett_rt_eh = .*?global )%struct\.[^ ]+( zeroinitializer, align 8)',
+                               r'\1{ i32, i32, ptr }\2',text)
+            assert count==1, 'missing canonical EH definition'
         # Clang C has no source attribute for LLVM allockind. §5.1 requires it;
         # add only alloc (NOT uninitialized) and allocsize to the two definitions.
         allocators={'malloc':'0','calloc':'0,1',
@@ -75,6 +79,12 @@ def build(major):
         re.search(r'target datalayout = "([^"]+)"',template)[1]))
     helper_bc=helper_ir.with_suffix('.bc')
     run(llvm/'llvm-as',helper_ir,'-o',helper_bc); objects.append(helper_bc)
+    control_ir=scratch/'control-helpers.ll'
+    control_ir.write_text('source_filename = "src/runtime/control.ll"\n'+
+        '\n'.join(re.findall(r'^target (?:triple|datalayout) = .*$',template,re.M))+'\n'+
+        (ROOT/'src/runtime/control.ll').read_text())
+    control_bc=control_ir.with_suffix('.bc')
+    run(llvm/'llvm-as',control_ir,'-o',control_bc); objects.append(control_bc)
     core = scratch/'allocator.bc'
     run(llvm/'llvm-link', *objects[:2], '-o', core)
     for i, source in enumerate(files):
@@ -192,7 +202,7 @@ def build(major):
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/integer_helpers.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/runtime/shadow.h', 'src/runtime/integer.h', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/integer_helpers.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/runtime/shadow.h', 'src/runtime/integer.h', 'src/runtime/control.ll', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'

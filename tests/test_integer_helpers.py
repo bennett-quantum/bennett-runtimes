@@ -143,3 +143,31 @@ for major in (18,23):
                 count+=1
     assert hashlib.sha256(publication.read_bytes()).digest()==before
     print(f'LLVM{major}: {count} exact typed scalar/limb-slot cases across {len(widths)} widths, independent integer oracle and no-host component closure PASS',flush=True)
+    # The largest admitted LLVM width remains an ordinary generated body,
+    # rather than a prebuilt-cache cap. Execute a linear-time operation there.
+    maximum=8388608; maximum_limbs=maximum//64
+    emitted.write_text(helper.generate([maximum],triple,layout))
+    adapter.write_text(f'''target triple = "{triple}"
+target datalayout = "{layout}"
+declare void @__bennett_rt_i{maximum}_ctpop(ptr,ptr)
+declare void @llvm.trap()
+define void @__bennett_nz_fault(i64 %c) {{ call void @llvm.trap()
+ unreachable }}
+define void @test_maximum(ptr %d,ptr %a) {{
+ call void @__bennett_rt_i{maximum}_ctpop(ptr %d,ptr %a)
+ ret void
+}}
+''')
+    maximum_library=TMP/f'maximum-{major}.so'
+    run(llvm/'llvm-link',adapter,emitted,publication,'--only-needed','-o',linked)
+    run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined',linked,'-o',maximum_library)
+    assert not run(llvm/'llvm-nm','--undefined-only',maximum_library).strip()
+    maximum_module=ctypes.CDLL(str(maximum_library)); f=maximum_module.test_maximum
+    f.argtypes=[ctypes.c_void_p,ctypes.c_void_p]; f.restype=None
+    values=(ctypes.c_uint64*maximum_limbs)(*([0x5555555555555555]*maximum_limbs))
+    result=(ctypes.c_uint64*(maximum_limbs+2))()
+    result[0]=result[-1]=0xa5a5a5a5a5a5a5a5
+    f(ctypes.byref(result,8),values)
+    assert result[1]==maximum//2 and not any(result[2:-1])
+    assert result[0]==result[-1]==0xa5a5a5a5a5a5a5a5
+    print(f'LLVM{major}: width{maximum} ctpop body executes with exact full-width result and bounds PASS',flush=True)
