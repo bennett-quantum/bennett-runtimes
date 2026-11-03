@@ -8,12 +8,16 @@ extern void *__bennett_nz_alloc(uint64_t);
 extern _Noreturn void __bennett_nz_fault(uint64_t);
 unsigned char *__bennett_rt_shadow;
 uint64_t __bennett_rt_ss_size, __bennett_rt_ss_sp;
+uintptr_t __bennett_rt_reg_sp;
+extern uintptr_t __bennett_rt_reg_rsp __attribute__((alias("__bennett_rt_reg_sp")));
+extern uintptr_t __bennett_rt_reg_x2 __attribute__((alias("__bennett_rt_reg_sp")));
 struct bennett_shadow_table __bennett_rt_ss_table;
 
 void __bennett_rt_ss_init(uint64_t size) {
     if(__bennett_rt_shadow) return;
     __bennett_rt_shadow=__bennett_nz_alloc(size);
     __bennett_rt_ss_size=size;
+    __bennett_rt_reg_sp=(uintptr_t)__bennett_rt_shadow;
 }
 static struct bennett_shadow_entry *append(enum bennett_shadow_kind kind,uint64_t begin,uint64_t end) {
     struct bennett_shadow_entry *entry=malloc(sizeof *entry);
@@ -34,6 +38,7 @@ static void *allocate(uint64_t size,uint64_t align,enum bennett_shadow_kind kind
     struct bennett_shadow_entry *entry=append(kind,begin,end);
     if(kind==BRT_FRAME) __bennett_rt_ss_table.frame=entry;
     __bennett_rt_ss_sp=end;
+    __bennett_rt_reg_sp=(uintptr_t)__bennett_rt_shadow+end;
     unsigned char *p=__bennett_rt_shadow+begin;
     /* Register before filling: these writes address exactly the new logical
      * object, never unused capacity or a name-based checker exemption. */
@@ -49,6 +54,7 @@ void __bennett_rt_ss_pop(void *fp) {
     if(!frame) __bennett_nz_fault(7);
     for(struct bennett_shadow_entry *e=frame;e;e=e->next) e->live=0;
     __bennett_rt_ss_sp=frame->before;
+    __bennett_rt_reg_sp=(uintptr_t)__bennett_rt_shadow+frame->before;
     __bennett_rt_ss_table.frame=frame->parent;
 }
 void *__bennett_rt_ss_save(void) {
@@ -64,6 +70,7 @@ void __bennett_rt_ss_restore(void *token) {
     for(struct bennett_shadow_entry *e=__bennett_rt_ss_table.first;e!=saved;e=e->next)
         if(e->live && e->kind==BRT_ALLOCA && e->begin<=saved->begin && e->end>saved->begin) e->end=saved->begin;
     __bennett_rt_ss_sp=saved->begin;
+    __bennett_rt_reg_sp=(uintptr_t)__bennett_rt_shadow+saved->begin;
     __bennett_rt_ss_table.frame=saved->parent;
 }
 void __bennett_rt_ss_check(const void *address,uint64_t n,const struct bennett_shadow_table *table) {

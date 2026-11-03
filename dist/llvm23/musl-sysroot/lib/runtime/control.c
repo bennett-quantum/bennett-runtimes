@@ -3,6 +3,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 extern _Noreturn void __bennett_nz_fault(uint64_t);
+uintptr_t __stack_chk_guard=UINT64_C(0x42454e4e45545400);
+_Noreturn void __stack_chk_fail(void) { __bennett_nz_fault(4); }
+extern __typeof(__stack_chk_fail) __stack_chk_fail_local __attribute__((alias("__stack_chk_fail")));
 struct type_id { const void *info; uint32_t id; struct type_id *next; };
 static struct type_id *types;
 static uint32_t next_id=1;

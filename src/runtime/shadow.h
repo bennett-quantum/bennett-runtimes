@@ -13,6 +13,7 @@ struct bennett_shadow_table {
 };
 extern unsigned char *__bennett_rt_shadow;
 extern uint64_t __bennett_rt_ss_size, __bennett_rt_ss_sp;
+extern uintptr_t __bennett_rt_reg_sp;
 extern struct bennett_shadow_table __bennett_rt_ss_table;
 void __bennett_rt_ss_check(const void *,uint64_t,const struct bennett_shadow_table *);
 #endif

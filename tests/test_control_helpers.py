@@ -9,7 +9,14 @@ def run(*args):
     r=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
     assert r.returncode==0,(args,r)
     return r.stdout
-source='''@__bennett_rt_eh = external global {i32,i32,ptr}, align 8
+source='''@__bennett_rt_tls = external global i8
+@__bennett_rt_reg_sp = external global i64
+@__stack_chk_guard = external global i64
+declare ptr @__bennett_rt_thread_pointer()
+declare void @__bennett_rt_ss_init(i64)
+declare ptr @__bennett_rt_ss_push(i64,i64)
+declare void @__bennett_rt_ss_pop(ptr)
+@__bennett_rt_eh = external global {i32,i32,ptr}, align 8
 @a = global i64 0
 @b = global i64 0
 @jump = global {ptr,i32} zeroinitializer
@@ -20,6 +27,18 @@ declare void @__bennett_rt_setjmp(ptr,ptr,i32)
 declare void @__bennett_rt_longjmp(ptr,i32)
 declare void @__bennett_rt_tramp_init(ptr,ptr,ptr)
 define i32 @main() {
+ call void @__bennett_rt_ss_init(i64 64)
+ %fp=call ptr @__bennett_rt_ss_push(i64 8,i64 8)
+ %baseint=ptrtoint ptr %fp to i64
+ %end=add i64 %baseint,8
+ %sp=load i64,ptr @__bennett_rt_reg_sp
+ %spok=icmp eq i64 %sp,%end
+ %tls=call ptr @__bennett_rt_thread_pointer()
+ %tlsok=icmp eq ptr %tls,@__bennett_rt_tls
+ %guard=load i64,ptr @__stack_chk_guard
+ %guardok=icmp ne i64 %guard,0
+ %env0=and i1 %spok,%tlsok
+ %env=and i1 %env0,%guardok
  %ia=call i32 @__bennett_rt_eh_typeid(ptr @a)
  %again=call i32 @__bennett_rt_eh_typeid(ptr @a)
  %ib=call i32 @__bennett_rt_eh_typeid(ptr @b)
@@ -28,11 +47,11 @@ define i32 @main() {
  %nonzero=icmp ne i32 %ia,0
  %good0=and i1 %stable,%distinct
  %good1=and i1 %good0,%nonzero
- call void @__bennett_rt_setjmp(ptr @jump,ptr @a,i32 9)
+ call void @__bennett_rt_setjmp(ptr @jump,ptr %fp,i32 9)
  %frame=load ptr,ptr @jump
  %sitep=getelementptr {ptr,i32},ptr @jump,i32 0,i32 1
  %site=load i32,ptr %sitep
- %frameok=icmp eq ptr %frame,@a
+ %frameok=icmp eq ptr %frame,%fp
  %siteok=icmp eq i32 %site,9
  %good2=and i1 %frameok,%siteok
  %pair0=insertvalue {ptr,i32} zeroinitializer,ptr @b,0
@@ -79,7 +98,9 @@ define i32 @main() {
  %ok1=and i1 %good4,%good6
  %ok2=and i1 %good8,%good9
  %ok3=and i1 %ok0,%ok1
- %ok=and i1 %ok3,%ok2
+ %ok4=and i1 %ok3,%ok2
+ %ok=and i1 %ok4,%env
+ call void @__bennett_rt_ss_pop(ptr %fp)
  %bad=xor i1 %ok,true
  %r=zext i1 %bad to i32
  ret i32 %r

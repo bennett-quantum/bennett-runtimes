@@ -11,6 +11,7 @@ struct __libc __libc = { .page_size = 4096 };
     .robust_list={ .head=&__bennett_rt_thread.robust_list.head, \
         .off=(long)offsetof(pthread_mutex_t,_m_lock)-(long)offsetof(pthread_mutex_t,_m_next) } }
 struct pthread __bennett_rt_thread = INITIAL_THREAD;
+extern __typeof(__bennett_rt_thread) __bennett_rt_tls __attribute__((alias("__bennett_rt_thread")));
 void *__bennett_rt_thread_pointer(void) { return &__bennett_rt_thread; }
 extern void *calloc(size_t, size_t);
 void *__libc_calloc(size_t n, size_t m) { return calloc(n,m); }
