@@ -16,5 +16,21 @@
 #define BRT_INT_ASHR 12
 #define BRT_INT_SSHL_SAT 13
 #define BRT_INT_USHL_SAT 14
+#define BRT_INT_MUL 15
+#define BRT_INT_UDIV 16
+#define BRT_INT_SDIV 17
+#define BRT_INT_UREM 18
+#define BRT_INT_SREM 19
+#define BRT_INT_SMUL_FIX 20
+#define BRT_INT_UMUL_FIX 21
+#define BRT_INT_SMUL_FIX_SAT 22
+#define BRT_INT_UMUL_FIX_SAT 23
+#define BRT_INT_SDIV_FIX 24
+#define BRT_INT_UDIV_FIX 25
+#define BRT_INT_SDIV_FIX_SAT 26
+#define BRT_INT_UDIV_FIX_SAT 27
+#define BRT_INT_SMUL_WITH_OVERFLOW 28
+#define BRT_INT_UMUL_WITH_OVERFLOW 29
 uint32_t __bennett_rt_integer_op(uint64_t *,const uint64_t *,const uint64_t *,const uint64_t *,uint32_t,uint32_t,uint32_t);
+uint32_t __bennett_rt_integer_arithmetic(uint64_t *,const uint64_t *,const uint64_t *,uint32_t,uint32_t,uint32_t);
 #endif
