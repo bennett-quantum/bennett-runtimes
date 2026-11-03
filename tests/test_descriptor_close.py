@@ -1,11 +1,14 @@
 #!/usr/bin/env python3
 """Independent same-source host, production bridge and checked descriptor cases."""
 import os
+import importlib.util
 from pathlib import Path
 import subprocess
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(os.environ['TMPDIR'])/'descriptor-close'
 TMP.mkdir(parents=True, exist_ok=True)
+spec=importlib.util.spec_from_file_location('production_support',ROOT/'tests/production_support.py')
+production=importlib.util.module_from_spec(spec); spec.loader.exec_module(production)
 def run(*args):
     r = subprocess.run(list(map(str, args)), capture_output=True, timeout=120)
     assert r.returncode == 0, (args, r)
@@ -29,6 +32,6 @@ for major in (18, 23):
             '-emit-llvm', '-c', ROOT/'tests/descriptor_close.c', '-o', app)
         run(llvm/'llvm-link', app, dist/'bennett-runtimes.bc', '--only-needed', '-o', linked)
         exe = TMP/f'production-{major}-{level}'
-        run(llvm/'clang', linked, '-o', exe)
+        production.link(major,linked,exe,layout,fault_override=True)
         assert run(exe) == b''
     print(f'LLVM {major}: same-source host/checked O0/O2 close/write/writev/seek/repeated-close, no output or production effect; process reset PASS', flush=True)

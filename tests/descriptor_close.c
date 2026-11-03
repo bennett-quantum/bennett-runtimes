@@ -5,6 +5,7 @@
 #define CHECK(x) do { if (!(x)) return __LINE__; } while (0)
 #ifdef TEST_PRODUCTION
 #include <stdint.h>
+#include "device_effects.c"
 static unsigned effects;
 void __bennett_effect_console_write(const void *p, uint64_t n) { (void)p; (void)n; ++effects; }
 _Noreturn void __bennett_nz_fault(uint64_t code) { (void)code; __builtin_trap(); }

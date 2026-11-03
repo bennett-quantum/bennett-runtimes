@@ -12,7 +12,7 @@ musl = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/musl/vfs.c', 'src/musl/syscall.c']
+SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
@@ -100,8 +100,8 @@ def build(major):
     support = out/'musl-sysroot/lib/native-support.bc'
     run(llvm/'llvm-link', *native_objects, '-o', support)
     native = out/'bennett-runtimes-native.bc'
-    # Only the syscall bridge is replaced. The musl/allocator/L-console sources
-    # are identical; native primitive definitions never enter production.
+    # Replace only primitive/startup/effect transports. Ordinary syscall and
+    # VFS bodies remain identical; native definitions never enter production.
     run(llvm/'llvm-link', *objects, '--override='+str(support), '-o', native)
     run(llvm/'opt', '-passes=strip-dead-prototypes,verify', native, '-o', native)
     # Offline compiler-rt input is byte-pinned, never selected from host libraries.
@@ -124,7 +124,7 @@ def build(major):
     assert set(EXPORTS + ['printf','puts','write','exit']) <= set(exports), exports
     assert not re.search(r'^define .*@(?:__bennett_nz_|__bennett_effect_)', ir, re.M)
     manifest = {
-        'implementation': 'musl-console-native-v2', 'llvm_major': int(major),
+        'implementation': 'musl-device-vfs-native-v3', 'llvm_major': int(major),
         'target': 'x86_64-unknown-linux-musl', 'dialect': '0.2.10',
         'dialect_commit': '023f5a771a814270634db3be9cfde88ded69f975',
         'isa': '0.8', 'sha256': sha(artifact), 'exports': exports,
@@ -182,7 +182,7 @@ def build(major):
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'

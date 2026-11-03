@@ -8,7 +8,7 @@ all upstream headers. `src/musl/context.c` supplies the static process context
 calloc to the published zero-filling allocator. No host TLS/libc is used.
 
 Generated platform headers live outside the upstream source tree. Syscall
-wrappers call `__bennett_rt_syscall`, whose console policy is documented in
+wrappers call `__bennett_rt_syscall`, whose device policy is documented in
 `device-models/README.md`. The native-only Linux syscall backend is separate and
 published only in `bennett-runtimes-native.bc` and `lib/native-support.bc`,
 never in device bitcode. Both include `_start`; `lib/start.bc` is also available
@@ -114,6 +114,27 @@ handlers in reverse registration order and flush buffered stdio once;
 and inherited ISA effect tape. Native/context and store-history tests do not
 establish full R execution under the repo's ISA 0.8 pin (BLK-5).
 
+
+The ordinary data-image VFS stores its namespace, inodes, sparse 4096-byte
+pages, descriptors and shared open-file descriptions in runtime globals and
+allocator memory. It has no host filesystem or fixed file/page/descriptor
+table cap. Descriptors close and can be reused; dup shares offsets. Regular
+open/read/write/pread/pwrite/seek, metadata, append, truncation, rename/unlink
+and FILE operations use this state. Sparse reads return zero, shrinking a
+file removes pages/zeros its last page, and later growth does not reveal old
+bytes. Unlink retains data for live open descriptions. Directory path walking
+and openat preserve directory checks, and directory rename updates cwd and
+child names. Process preparation installs fresh standard descriptors.
+
+Upstream clock_gettime/gettimeofday/time and getrandom/getentropy reach the
+clock/entropy effects. Random-device file reads use the same entropy tape.
+Block-file reads/writes use sector effects, including read-modify-write for
+partial sectors and absent-sector zero reads. Native comparison replaces only
+the named device transports; VFS and descriptor instructions remain the same
+checked materialised code. Test-only production fixtures retain original
+marker calls and supply model adapters plus primitive support. A same-source
+host fixture writes only under the job TMPDIR and checks independent file
+results; the component checks do not claim whole-program R/action acceptance.
 
 The SQLite closure adds upstream musl bcmp/strncmp/strspn/strcspn/strrchr,
 the bounded-memory helpers they use, and a UTC time-conversion profile.

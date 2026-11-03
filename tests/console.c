@@ -7,6 +7,7 @@
 #include <sys/uio.h>
 #include <errno.h>
 #include <limits.h>
+#include "device_effects.c"
 extern unsigned char *__bennett_dev_console_buffer;
 extern uint64_t __bennett_dev_console_L, __bennett_dev_console_n;
 extern uint32_t __bennett_dev_console_bound, __bennett_dev_console_action;

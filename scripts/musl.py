@@ -25,7 +25,7 @@ fcntl/open fcntl/openat fcntl/creat unistd/read unistd/readv unistd/pread unistd
 unistd/dup unistd/dup2 unistd/dup3 fcntl/fcntl stat/stat stat/fstat stat/lstat stat/fstatat
 stat/mkdir unistd/rmdir unistd/unlink stdio/rename unistd/ftruncate unistd/truncate
 unistd/access unistd/chdir unistd/fchdir unistd/getcwd unistd/fsync unistd/fdatasync
-stdio/fopen stdio/__fdopen stdio/__fmodeflags stdio/__stdio_read
+stdio/fopen stdio/__fdopen stdio/__fmodeflags stdio/__stdio_read internal/procfdname
 env/getenv thread/pthread_self locale/localeconv legacy/getpagesize
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy
@@ -73,6 +73,8 @@ def prepare(root, out, scratch):
     shutil.copytree(root/'src/native',lib/'native',dirs_exist_ok=True)
     (lib/'musl').mkdir(exist_ok=True)
     shutil.copyfile(root/'src/musl/syscall.c',lib/'musl/syscall.c')
+    for name in ('vfs.c','vfs.h'):
+        shutil.copyfile(root/'src/musl'/name,lib/'musl'/name)
     shutil.copyfile(src/'COPYRIGHT',out/'musl-sysroot/COPYRIGHT')
     flags=['--target=x86_64-unknown-linux-musl','-std=c99','-O2','-flto','-emit-llvm','-ffreestanding','-fno-builtin','-fno-vectorize','-fno-slp-vectorize','-fno-ident','-Wno-deprecated-non-prototype','-Wno-shift-op-parentheses','-fno-stack-protector','-nostdinc','-D_XOPEN_SOURCE=700','-DBENNETT_EXACT_STRING_BOUNDS=1']
     for path in (overlays,src/'arch/x86_64',src/'arch/generic',src/'src/include',src/'src/internal',inc):

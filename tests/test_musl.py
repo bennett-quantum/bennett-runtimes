@@ -19,7 +19,9 @@ for m in (18,23):
     manifest=json.loads((dist/'manifest.json').read_text())
     for name, digest in manifest['sysroot'].items():
         assert hashlib.sha256((dist/name).read_bytes()).hexdigest()==digest, name
-    assert set(manifest['undefined_imports']) <= {'__bennett_nz_alloc','__bennett_nz_free','__bennett_nz_fault','__bennett_effect_console_write','__fini_array_start','__fini_array_end'}
+    assert set(manifest['undefined_imports']) <= {'__bennett_nz_alloc','__bennett_nz_free','__bennett_nz_fault',
+        '__bennett_effect_console_write','__bennett_effect_clock_read','__bennett_effect_entropy_read',
+        '__bennett_effect_block_read','__bennett_effect_block_write','__fini_array_start','__fini_array_end'}
     assert {'printf','puts','write','exit','__bennett_dev_console_write'} <= set(manifest['exports'])
     fixtures = [('hello', '#include <stdio.h>\nint main(void) { printf("hello, world\\n"); return 0; }', b'hello, world\n'),
                 ('formatted', '#include <stdio.h>\n#include <stdlib.h>\n#include <unistd.h>\nstatic void done(void){puts("handler");}\nint main(void){atexit(done); printf("%s %d %.2f", "musl",42,1.25); return 0;}', b'musl 42 1.25handler\n'),

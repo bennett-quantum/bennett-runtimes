@@ -78,6 +78,7 @@ long __bennett_rt_vfs_close(long fd) {
 long __bennett_rt_vfs_dup(long old,long start,int exact,int cloexec) {
     struct bennett_file *f=__bennett_rt_vfs_file(old);
     if(!f) return -EBADF;
+    if(exact && (start<0 || start>INT_MAX)) return -EBADF;
     if(exact && old==start) return old;
     return install(f,start,exact,cloexec);
 }
@@ -114,6 +115,13 @@ static char *canonical(const char *path,long at,int *error) {
             if(used>1) result[used++]='/';
             memcpy(result+used,begin,len); used+=len;
         }
+        const char *rest=path; while(*rest=='/') ++rest;
+        if(*rest) {
+            result[used]=0; struct name *n=lookup(result);
+            if(!n || n->inode->kind!=BRT_DIRECTORY) {
+                *error=n?ENOTDIR:ENOENT; free(result); return 0;
+            }
+        }
     }
     result[used]=0; return result;
 }
@@ -143,8 +151,19 @@ static void truncate_inode(struct bennett_inode *i,uint64_t size) {
     i->size=size;
 }
 long __bennett_rt_vfs_open(const char *path,int flags,unsigned mode,long at) {
+    if((flags&O_ACCMODE)==O_ACCMODE) return -EINVAL;
     int error=0; char *full=canonical(path,at,&error); if(!full) return -error;
     struct name *n=lookup(full);
+    if((flags&O_TMPFILE)==O_TMPFILE) {
+        if(!n) { free(full); return -ENOENT; }
+        if(n->inode->kind!=BRT_DIRECTORY) { free(full); return -ENOTDIR; }
+        if((flags&O_ACCMODE)==O_RDONLY) { free(full); return -EINVAL; }
+        free(full);
+        struct bennett_inode *i=calloc(1,sizeof *i);
+        i->kind=BRT_REGULAR; i->mode=S_IFREG|(mode&07777); i->number=next_inode++;
+        struct bennett_file *f=malloc(sizeof *f);
+        *f=(struct bennett_file){BRT_REGULAR,flags,0,0,i}; return install(f,0,0,!!(flags&O_CLOEXEC));
+    }
     if(!n) {
         if(!(flags&O_CREAT)) { free(full); return -ENOENT; }
         int r=parent_directory(full); if(r) { free(full); return r; }
@@ -152,8 +171,7 @@ long __bennett_rt_vfs_open(const char *path,int flags,unsigned mode,long at) {
     } else if((flags&(O_CREAT|O_EXCL))==(O_CREAT|O_EXCL)) { free(full); return -EEXIST; }
     free(full);
     if((flags&O_DIRECTORY) && n->inode->kind!=BRT_DIRECTORY) return -ENOTDIR;
-    if(n->inode->kind==BRT_DIRECTORY && (flags&O_ACCMODE)!=O_RDONLY) return -EISDIR;
-    if((flags&O_ACCMODE)==O_ACCMODE) return -EINVAL;
+    if(n->inode->kind==BRT_DIRECTORY && ((flags&O_ACCMODE)!=O_RDONLY || (flags&O_CREAT))) return -EISDIR;
     if((flags&O_TRUNC) && n->inode->kind==BRT_REGULAR && (flags&O_ACCMODE)!=O_RDONLY)
         truncate_inode(n->inode,0);
     struct bennett_file *f=malloc(sizeof *f);
@@ -165,6 +183,7 @@ long __bennett_rt_vfs_io(struct bennett_file *f,void *buffer,uint64_t n,int writ
     if(f->kind==BRT_DIRECTORY) return -EISDIR;
     if(f->kind==BRT_NULL) return writing?(long)n:0;
     if(f->kind==BRT_ZERO) { if(!writing) memset(buffer,0,n); return n; }
+    if(!n) return 0;
     struct bennett_inode *i=f->inode;
     uint64_t pos=positional?offset:f->pos;
     if(writing && (f->flags&O_APPEND)) pos=i->size;
@@ -270,18 +289,33 @@ long __bennett_rt_vfs_meta(long nr,long a,long b,long c,long d,long e) {
     } else if(nr==82) {
         char *dest=canonical((void *)b,AT_FDCWD,&error);
         if(!dest) result=-error;
+        else if(!strcmp(full,dest)) result=0;
+        else if(!strcmp(full,"/")) result=-EBUSY;
+        else if(n->inode->kind==BRT_DIRECTORY && !strncmp(dest,full,strlen(full)) && dest[strlen(full)]=='/') result=-EINVAL;
         else if((result=parent_directory(dest))==0) {
             struct name *existing=lookup(dest);
-            if(existing && existing->inode->kind==BRT_DIRECTORY) result=-EISDIR;
+            if(existing && existing->inode->kind==BRT_DIRECTORY && n->inode->kind!=BRT_DIRECTORY) result=-EISDIR;
+            else if(existing && existing->inode->kind!=BRT_DIRECTORY && n->inode->kind==BRT_DIRECTORY) result=-ENOTDIR;
             else {
-                if(existing) { --existing->inode->links; existing->inode=0; }
                 size_t oldlen=strlen(full);
+                if(existing && existing->inode->kind==BRT_DIRECTORY) {
+                    size_t len=strlen(dest);
+                    for(struct name *child=names;child;child=child->next) if(child->inode &&
+                        !strncmp(child->path,dest,len) && child->path[len]=='/') result=-ENOTEMPTY;
+                }
+                if(result) { free(dest); free(full); return result; }
+                if(existing) { --existing->inode->links; existing->inode=0; }
                 if(n->inode->kind==BRT_DIRECTORY) {
                     for(struct name *child=names;child;child=child->next) if(child->inode &&
                         !strncmp(child->path,full,oldlen) && child->path[oldlen]=='/') {
                         size_t prefix=strlen(dest), tail=strlen(child->path+oldlen)+1;
                         char *updated=malloc(prefix+tail);
                         memcpy(updated,dest,prefix); memcpy(updated+prefix,child->path+oldlen,tail); child->path=updated;
+                    }
+                    if(!strncmp(cwd,full,oldlen) && (!cwd[oldlen] || cwd[oldlen]=='/')) {
+                        size_t prefix=strlen(dest), tail=strlen(cwd+oldlen)+1;
+                        char *updated=malloc(prefix+tail);
+                        memcpy(updated,dest,prefix); memcpy(updated+prefix,cwd+oldlen,tail); cwd=updated;
                     }
                 }
                 n->path=dest; dest=0;

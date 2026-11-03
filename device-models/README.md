@@ -17,8 +17,10 @@ host resource to release. A successful close marks that descriptor closed in
 ordinary reversible state. Later write/writev/seek/ioctl/close on it returns
 EBADF, while the other descriptor and virtual device binding remain usable.
 Fresh process preparation restores the descriptor state. These integration choices are recorded with both
-readings in dialect bead **b-dialect-spec-lbq**. Other device/VFS syscalls remain
-brt-zct scope and take the specified unmodelled-effect fault, never host Linux.
+readings in dialect bead **b-dialect-spec-lbq**. Clock/time and random APIs use
+the clock/entropy markers. A data-image VFS handles ordinary files, with
+`/dev/random`, `/dev/urandom`, `/dev/block` and `/dev/vda` reaching their models.
+Genuinely unmodelled operations fault 8, never pass through to host Linux.
 
 The compiler handles the marker according to §11.1:
 
@@ -85,14 +87,17 @@ rung-3 gate owns whole-program forward/native, un-run and replay acceptance.
 
 ## Native comparison transport
 
-The comparison-only publication compiles the same syscall bridge with
-`BENNETT_NATIVE_COMPARISON`. Write/writev retain fd/aggregate/zero-length policy,
-but top-level console events reach `__bennett_rt_native_console_write`, a Linux
-stdout transport that handles short writes/EINTR and faults 8 on failure.
-This is the native console twin, not an effect-marker definition. The ordinary
-L/private console function above is unchanged. Exit uses Linux exit_group;
-unknown operations still fault 8. Heap mapping and fault diagnostics use a
-separate private Linux transport; user syscalls cannot access it through musl.
+The comparison-only publication retains the ordinary syscall, descriptor and
+VFS bodies. Separate `__bennett_rt_transport_*` definitions replace only device
+and exit transports after materialisation/checking. Console output handles
+short Linux writes/EINTR and faults 8 on failure. Clock, entropy and block use
+the same bound ordinary models and full operand-range checks. Caller scratch
+stays in the materialised caller's registered objects; no broad private stack
+admission or second host implementation of VFS semantics is needed. No effect
+marker is defined/imported by the native publication. Native exit uses Linux
+exit_group; private mapping/diagnostics remain inaccessible to user syscalls.
+Consumers must re-materialise the runtime closure when updating these bytes,
+including the new transport boundaries.
 
 ## Clock, entropy and block state
 

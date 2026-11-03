@@ -19,7 +19,4 @@ extern const struct bennett_native_object __bennett_rt_native_objects[] __attrib
 extern const uint64_t __bennett_rt_native_object_count __attribute__((weak));
 void __bennett_rt_native_check(const void *, uint64_t);
 void __bennett_rt_native_inputs(int, char **, char **);
-void *__bennett_rt_native_stack_enter(void);
-void __bennett_rt_native_stack_add(void *,uint64_t);
-void __bennett_rt_native_stack_leave(void *);
 #endif
