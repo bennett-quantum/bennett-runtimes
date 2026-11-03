@@ -36,6 +36,7 @@ python3 -I "$root/tests/test_allocator_history.py"
 python3 -I "$root/tests/test_console.py"
 python3 -I "$root/tests/test_descriptor_close.py"
 python3 -I "$root/tests/test_libc_routes.py"
+python3 -I "$root/tests/test_helper_closure.py"
 python3 -I "$root/tests/test_devices.py"
 python3 -I "$root/tests/test_sanitizers.py"
 echo 'gate: LLVM 18/23 publications reproduced; runtime and corpus closure PASS'

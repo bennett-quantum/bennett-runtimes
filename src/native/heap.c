@@ -4,6 +4,11 @@
 #include <stddef.h>
 #include <stdint.h>
 #include "layout.h"
+#include "../runtime/shadow.h"
+extern unsigned char *__bennett_rt_shadow __attribute__((weak));
+extern uint64_t __bennett_rt_ss_size __attribute__((weak));
+extern struct bennett_shadow_table __bennett_rt_ss_table __attribute__((weak));
+extern void __bennett_rt_ss_check(const void *,uint64_t,const struct bennett_shadow_table *) __attribute__((weak));
 _Static_assert(sizeof(void *) == 8, "native backend requires x86_64 LP64");
 struct allocation { uintptr_t base; uint64_t size, live; };
 static struct allocation *history;
@@ -181,6 +186,11 @@ __attribute__((noinline)) void __bennett_rt_native_check(const void *address,uin
     uintptr_t p=(uintptr_t)address;
     if (n>UINTPTR_MAX-p) __bennett_nz_fault(7);
     initialise();
+    if(&__bennett_rt_shadow && &__bennett_rt_ss_size && &__bennett_rt_ss_table && __bennett_rt_ss_check) {
+        uintptr_t base=(uintptr_t)__bennett_rt_shadow;
+        if(base && p>=base && p-base<__bennett_rt_ss_size)
+            __bennett_rt_ss_check(address,n,&__bennett_rt_ss_table);
+    }
     if (p>=__bennett_rt_native_layout.heap_base &&
         p-__bennett_rt_native_layout.heap_base<__bennett_rt_native_layout.heap_limit_max) {
         struct allocation *r=find(p);

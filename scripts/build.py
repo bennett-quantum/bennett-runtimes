@@ -12,7 +12,7 @@ musl = importlib.util.module_from_spec(_module)
 _module.loader.exec_module(musl)
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c']
+SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c', 'src/runtime/shadow.c', 'src/runtime/integer_core.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
@@ -65,6 +65,16 @@ def build(major):
         bc = ll.with_suffix('.bc')
         run(llvm/'llvm-as', ll, '-o', bc)
         objects.append(bc)
+    helper_spec=importlib.util.spec_from_file_location('integer_helpers',ROOT/'scripts/integer_helpers.py')
+    helper_module=importlib.util.module_from_spec(helper_spec); helper_spec.loader.exec_module(helper_module)
+    template=(scratch/'integer_core.ll').read_text()
+    assert not re.search(r'@llvm\.(?:ctpop|ctlz|cttz|bswap|bitreverse|fshl|fshr)',template), 'recursive integer intrinsic in helper body'
+    helper_ir=scratch/'integer-helpers.ll'
+    helper_ir.write_text(helper_module.generate((1,8,16,32,64,128),
+        re.search(r'target triple = "([^"]+)"',template)[1],
+        re.search(r'target datalayout = "([^"]+)"',template)[1]))
+    helper_bc=helper_ir.with_suffix('.bc')
+    run(llvm/'llvm-as',helper_ir,'-o',helper_bc); objects.append(helper_bc)
     core = scratch/'allocator.bc'
     run(llvm/'llvm-link', *objects[:2], '-o', core)
     for i, source in enumerate(files):
@@ -182,7 +192,7 @@ def build(major):
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/integer_helpers.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/runtime/shadow.h', 'src/runtime/integer.h', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'
