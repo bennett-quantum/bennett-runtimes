@@ -19,9 +19,10 @@ for m in (18,23):
     # The external journal is the native-model analogue of §17 execution history.
     active=False; lines=[]; stores=0
     for line in ir.splitlines():
-        if line.startswith('define '): active='@__bennett_dev_console_write(' in line
+        if line.startswith('define '):
+            active=any('@'+name+'(' in line for name in ('__bennett_dev_console_write','__bennett_rt_syscall','__bennett_rt_vfs_close'))
         if active and line.lstrip().startswith('store '):
-            match=re.match(r'\s*store (?:volatile )?(i8|i32|i64|ptr) .*?, ptr ([^, ]+)',line)
+            match=re.match(r'\s*store (?:volatile )?(i8|i32|i64|ptr) .*?, ptr (.*?)(?:, align [0-9]+)?(?:, !.*)?$',line)
             assert match, 'unhandled model store: '+line
             size={'i8':1,'i32':4,'i64':8,'ptr':8}[match[1]]
             lines.append(f'  call void @test_record(ptr {match[2]}, i64 {size})')

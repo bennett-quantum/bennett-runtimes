@@ -10,10 +10,13 @@ Real musl `printf`/`vfprintf`, `puts`, `putc`, `write` and `writev` reach
 `__bennett_rt_syscall` (`src/musl/syscall.c`). Per §11.2, write on descriptors
 1/2 emits `__bennett_effect_console_write(ptr,len)`; writev emits one such call
 per nonempty vector in vector order, after validating the whole length sum.
-Zero-length writes emit no event. Return values are bytes consumed, including
+Zero-length writes on an open descriptor emit no event. Return values are bytes consumed, including
 bytes discarded by a private oracle console. Musl translates negative errno
 results. TIOCGWINSZ returns ENOTTY, seek returns ESPIPE, and virtual close has no
-host resource to release. These integration choices are recorded with both
+host resource to release. A successful close marks that descriptor closed in
+ordinary reversible state. Later write/writev/seek/ioctl/close on it returns
+EBADF, while the other descriptor and virtual device binding remain usable.
+Fresh process preparation restores the descriptor state. These integration choices are recorded with both
 readings in dialect bead **b-dialect-spec-lbq**. Other device/VFS syscalls remain
 brt-zct scope and take the specified unmodelled-effect fault, never host Linux.
 

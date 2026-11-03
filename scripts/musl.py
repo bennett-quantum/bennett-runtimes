@@ -20,6 +20,12 @@ stdio/fmemopen stdio/open_memstream stdio/fread stdio/fclose stdio/fseek stdio/f
 stdio/fgetpos stdio/fsetpos stdio/rewind stdio/fgets stdio/fgetc stdio/getc
 stdio/feof stdio/ferror stdio/clearerr stdio/ungetc stdio/__uflow stdio/__toread stdio/ofl_add
 exit/exit exit/_Exit exit/atexit unistd/write unistd/writev unistd/lseek
+time/clock_gettime time/clock_getres time/gettimeofday time/time linux/getrandom misc/getentropy thread/pthread_setcancelstate
+fcntl/open fcntl/openat fcntl/creat unistd/read unistd/readv unistd/pread unistd/pwrite
+unistd/dup unistd/dup2 unistd/dup3 fcntl/fcntl stat/stat stat/fstat stat/lstat stat/fstatat
+stat/mkdir unistd/rmdir unistd/unlink stdio/rename unistd/ftruncate unistd/truncate
+unistd/access unistd/chdir unistd/fchdir unistd/getcwd unistd/fsync unistd/fdatasync
+stdio/fopen stdio/__fdopen stdio/__fmodeflags stdio/__stdio_read
 env/getenv thread/pthread_self locale/localeconv legacy/getpagesize
 unistd/close internal/syscall_ret thread/__syscall_cp thread/__lock
 errno/__errno_location string/strlen string/strnlen string/memcpy

@@ -22,6 +22,7 @@ weak_alias(__progname, program_invocation_short_name);
 weak_alias(__progname_full, program_invocation_name);
 extern _Noreturn void __bennett_nz_fault(uint64_t);
 extern void __bennett_rt_fenv_reset(void);
+extern void __bennett_rt_vfs_prepare(void);
 
 void __bennett_rt_prepare_process(int argc,char **argv,char **envp) {
     /* Reject a malformed supplied vector before altering libc state. String
@@ -37,4 +38,5 @@ void __bennett_rt_prepare_process(int argc,char **argv,char **envp) {
     __progname=__progname_full;
     for (char *p=__progname_full;*p;++p) if (*p=='/') __progname=p+1;
     __bennett_rt_fenv_reset();
+    __bennett_rt_vfs_prepare();
 }

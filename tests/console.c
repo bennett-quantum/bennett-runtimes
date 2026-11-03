@@ -109,7 +109,14 @@ int main(int argc,char **argv) {
     CHECK(writev(1,v,3)==-1 && errno==EINVAL && history_n==0);
     CHECK(__bennett_rt_syscall(16,1,0x5413,0,0,0,0)==-25 && history_n==0);
     CHECK(__bennett_rt_syscall(8,1,0,0,0,0,0)==-29 && history_n==0);
-    CHECK(__bennett_rt_syscall(3,1,0,0,0,0,0)==0 && history_n==0);
+    CHECK(__bennett_rt_syscall(3,1,0,0,0,0,0)==0 && history_n>0);
+    CHECK(__bennett_rt_syscall(3,1,0,0,0,0,0)==-9);
+    CHECK(__bennett_rt_syscall(1,1,(long)"X",1,0,0,0)==-9 && !__bennett_dev_console_n);
+    CHECK(__bennett_rt_syscall(20,1,(long)v,1,0,0,0)==-9);
+    CHECK(__bennett_rt_syscall(1,2,(long)"Y",1,0,0,0)==1 && buffer[0]=='Y');
+    reverse(); CHECK(!__bennett_dev_console_n && equal(buffer,entry,64));
+    CHECK(__bennett_rt_syscall(1,1,(long)"Z",1,0,0,0)==1 && buffer[0]=='Z');
+    reverse(); CHECK(!__bennett_dev_console_n && equal(buffer,entry,64));
     __bennett_dev_console_action=1;
     __bennett_dev_console_write((const unsigned char *)"action",6);
     CHECK(__bennett_dev_console_n==6 && equal(buffer,"action",6));
