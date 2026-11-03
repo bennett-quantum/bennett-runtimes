@@ -51,6 +51,12 @@ define i32 @main() {
  call void @__bennett_rt_i129_sdiv(ptr @d,ptr @a,ptr @b)
  ret i32 99
 }
+''',
+    'stack-guard':'''declare void @__stack_chk_fail()
+define i32 @main() {
+ call void @__stack_chk_fail()
+ ret i32 99
+}
 '''}
 failures=[]
 for major in (18,23):
@@ -74,8 +80,8 @@ for major in (18,23):
         r=subprocess.run([ROOT/'scripts/native-check-link',str(major),source,exe,layout],capture_output=True,timeout=120)
         if r.returncode:
             failures.append((major,name,r.stderr.decode())); continue
-        if name.startswith('divide-'):
-            fault=5 if name=='divide-zero' else 6
+        if name.startswith('divide-') or name=='stack-guard':
+            fault=4 if name=='stack-guard' else 5 if name=='divide-zero' else 6
             r=subprocess.run([exe],capture_output=True,timeout=10)
             assert r.returncode==-4 and not r.stdout and r.stderr==f'bennett runtime fault {fault}\n'.encode(),(major,name,r)
         else: assert run(exe)==b''

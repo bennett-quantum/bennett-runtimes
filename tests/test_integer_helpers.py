@@ -85,10 +85,18 @@ for major in (18,23):
         for op in helper.operations():
             if op=='bswap' and w%16: continue
             if op in helper.WIDE_ONLY and w<=128: continue
-            if op in helper.OVERFLOW and not 64<w<=128: continue
+            if op in helper.OVERFLOW and w<=64: continue
             n=1 if op in helper.UNARY else 3 if op in ('fshl','fshr') else 2
             args=['ptr %d','ptr %a','ptr %b','ptr %c','i32 %flag']
             adapters.append(f'define i32 @test_{op}_{w}({",".join(args)}) {{')
+            if op in helper.OVERFLOW and w>128:
+                # N27's wide arithmetic aggregate is legalised by N22. Check
+                # its emitted typed definition separately, then test the same
+                # arithmetic kernel/flag with a limb adapter before N22.
+                assert re.search(r'define \{ i'+str(w)+r', i1 \} @__bennett_rt_'+op+'_i'+str(w)+r'\(',emitted.read_text())
+                adapters.extend([f' %status=call i32 @__bennett_rt_integer_op(ptr %d,ptr %a,ptr %b,ptr null,i32 {w},i32 {helper.operations()[op]},i32 0)',
+                                 ' ret i32 %status','}'])
+                cases.append((op,w,n)); continue
             extra=[]
             if op in helper.FLAGS:
                 adapters.append(' %z=icmp ne i32 %flag,0'); extra=['i1 %z']
@@ -109,7 +117,7 @@ for major in (18,23):
             adapters+=[' ret i32 '+('%status' if op in helper.OVERFLOW else '0'),'}',declaration]; cases.append((op,w,n))
     adapter=TMP/f'adapters-{major}.ll'
     adapter.write_text(f'target triple = "{triple}"\ntarget datalayout = "{layout}"\n'+
-        '\n'.join(adapters)+'\ndeclare void @llvm.trap()\ndefine void @__bennett_nz_fault(i64 %c) { call void @llvm.trap()\n unreachable }\n')
+        '\n'.join(adapters)+'\ndeclare i32 @__bennett_rt_integer_op(ptr,ptr,ptr,ptr,i32,i32,i32)\ndeclare void @llvm.trap()\ndefine void @__bennett_nz_fault(i64 %c) { call void @llvm.trap()\n unreachable }\n')
     linked=TMP/f'linked-{major}.bc'; library=TMP/f'helpers-{major}.so'
     run(llvm/'llvm-link',adapter,emitted,publication,'--only-needed','-o',linked)
     run(llvm/'clang','-O2','-fPIC','-nostdlib','-shared','-Wl,--no-undefined',linked,'-o',library)

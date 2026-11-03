@@ -1214,7 +1214,7 @@
     "julia-shim/alloc.c": "2c3d38768dbaf1c1d42f86d651bc622fab1be33c454e28438f1f8217f1c6d1e2",
     "scripts/build": "2ab49ca1891b6fcfc66d828a925a7c5ceffec922289b222e532366e585945adc",
     "scripts/build.py": "ecd2a8a4db80c698baaa6a083d099f2b11810f64cb4d56b2c7fb2cfacc5bc2cb",
-    "scripts/integer_helpers.py": "813d0376bdeb32b8ff5f9191d4dfc896055b8c9b076f1476184ad3fc5527162d",
+    "scripts/integer_helpers.py": "2f8e3635ddf7b934120e68f6e9bd32e60aa1b4c2652e311584671113c207f8ac",
     "scripts/musl.py": "a49df73c7df33987967becaaa121561018b5a35d56c133611df0ba161612913f",
     "scripts/native-check": "bb11d8498a8403a415a77910193302b00bb1978d6ee24c0079bab5aa69ab5c2e",
     "scripts/native-check-link": "027ec83434a28e972d607b7d26e5a922db42cf04cdf48d2695320625f7db0f21",

@@ -21,10 +21,11 @@ def generate(widths,triple,layout):
         for name,op in operations().items():
             if name=='bswap' and width%16: continue
             if name in WIDE_ONLY and width<=128: continue
-            if name in OVERFLOW and not 64<width<=128: continue
+            if name in OVERFLOW and width<=64: continue
             nargs=1 if name in UNARY else 3 if name in ('fshl','fshr') else 2
             extra=['i1 %flag'] if name in FLAGS else ['i32 %flag'] if name in FIXED else []
-            if width>128:
+            wide_slots=width>128 and name not in OVERFLOW
+            if wide_slots:
                 args=['ptr %dst']+['ptr %'+a for a in 'abc'[:nargs]]+extra
                 symbol=f'__bennett_rt_i{width}_{name}'
                 lines.append(f'define void @{symbol}({", ".join(args)}) {{')
@@ -49,7 +50,7 @@ def generate(widths,triple,layout):
             elif name in FIXED: flag='%flag'
             lines.append(f'  %status = call i32 @__bennett_rt_integer_op(ptr {destination},'+
                          ','.join('ptr '+p for p in pointers)+f',i32 {width},i32 {op},i32 {flag})')
-            if width>128: lines.append('  ret void')
+            if wide_slots: lines.append('  ret void')
             else:
                 lines.append(f'  %result = load i{width}, ptr %dst, align 8')
                 if name in OVERFLOW:
