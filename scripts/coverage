@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+"""Instrument handwritten C; include unexecuted modules in the coverage denominator."""
+import importlib.util
+import os
+from pathlib import Path
+import subprocess
+import tempfile
+ROOT = Path(__file__).resolve().parents[1]
+LLVM = Path(os.environ.get('BENNETT_LLVM23_BIN', '/usr/lib/llvm-23/bin'))
+TMP = Path(os.environ.get('TMPDIR', ROOT/'.tmp'))/'coverage'
+TMP.mkdir(parents=True, exist_ok=True)
+
+def run(*args, **kwargs):
+    return subprocess.check_output(list(map(str, args)), **kwargs)
+
+def main():
+    spec = importlib.util.spec_from_file_location('musl', ROOT/'scripts/musl.py')
+    musl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(musl)
+    with tempfile.TemporaryDirectory(dir=TMP) as directory:
+        scratch = Path(directory)
+        _, flags = musl.prepare(ROOT, scratch/'out', scratch)
+        flags = [f for f in flags if f not in ('-flto', '-emit-llvm', '-O2')]
+        flags += ['-O0', '-std=c11', '-D_GNU_SOURCE', '-fprofile-instr-generate', '-fcoverage-mapping']
+        objects = {}
+        for source in sorted([*(ROOT/'src').rglob('*.c'), ROOT/'julia-shim/alloc.c']):
+            obj = scratch/(str(source.relative_to(ROOT)).replace('/', '-')+'.o')
+            extra = ['-Dmalloc=runtime_malloc', '-Dcalloc=runtime_calloc',
+                     '-Dfree=runtime_free', '-Drealloc=runtime_realloc'] if source.name == 'bump.c' else []
+            source_flags = flags if source.name == 'context.c' else [
+                '-O0', '-std=c11', '-ffreestanding', '-fno-builtin', '-nostdinc',
+                '-isystem', str(scratch/'out/musl-sysroot/include'),
+                '-fprofile-instr-generate', '-fcoverage-mapping']
+            run(LLVM/'clang', *source_flags, *extra, '-c', source, '-o', obj)
+            objects[str(source.relative_to(ROOT))] = obj
+        # Override the fault reporter exactly as the global-range test does.
+        run(LLVM/'llvm-objcopy', '--weaken-symbol=__bennett_nz_fault', objects['src/native/heap.c'])
+        cases = {
+            'alignment': ('alignment.c', ['src/allocator/bump.c'],
+                          ['history', 'overflow', 'padding-budget', 'extent-budget', 'metadata-budget', 'first-strong-alignment']),
+            'ranges': ('global_ranges.c', ['src/native/heap.c', 'src/native/os.c'], ['']),
+            'integers': ('coverage_integer.c', ['src/runtime/integer_core.c', 'src/runtime/integer_arithmetic.c'], ['']),
+        }
+        profiles = []
+        executables = []
+        for label, (fixture, modules, arguments) in cases.items():
+            exe = scratch/label
+            run(LLVM/'clang', '-O0', '-fprofile-instr-generate', ROOT/'tests'/fixture,
+                *(objects[name] for name in modules), '-o', exe)
+            executables.append(exe)
+            for index, argument in enumerate(arguments):
+                profile = scratch/f'{label}-{index}.profraw'
+                env = dict(os.environ, LLVM_PROFILE_FILE=str(profile))
+                subprocess.run([exe]+([argument] if argument else []), env=env, check=True, timeout=30)
+                profiles.append(profile)
+        data = TMP/'runtime.profdata'
+        run(LLVM/'llvm-profdata', 'merge', '-sparse', *profiles, '-o', data)
+        argv = [LLVM/'llvm-cov', 'report', executables[0], '-instr-profile='+str(data)]
+        for obj in [*executables[1:], *objects.values()]:
+            argv.extend(['-object', obj])
+        argv.extend(ROOT/name for name in objects)
+        report = run(*argv).decode()
+        (TMP/'report.txt').write_text(report)
+        print(report)
+
+if __name__ == '__main__':
+    main()
