@@ -1,6 +1,9 @@
 #ifndef BENNETT_INTEGER_H
 #define BENNETT_INTEGER_H
 #include <stdint.h>
+/* LLVM Language Reference: Integer Type admits widths 1 through 2^23.
+ * Internal limb storage must never be sized by an unchecked caller width. */
+#define BRT_INTEGER_MAX_WIDTH UINT32_C(8388608)
 #define BRT_INT_CTPOP 0
 #define BRT_INT_BITREVERSE 1
 #define BRT_INT_BSWAP 2

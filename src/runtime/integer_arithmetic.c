@@ -72,7 +72,7 @@ static void subtract(uint64_t *a,const uint64_t *b,uint64_t limbs) {
 }
 uint32_t __bennett_rt_integer_arithmetic(uint64_t *dst,const uint64_t *left,const uint64_t *right_operand,
                                        uint32_t width,uint32_t op,uint32_t scale) {
-    if(!width) __bennett_nz_fault(4);
+    if(!width || width>BRT_INTEGER_MAX_WIDTH) __bennett_nz_fault(4);
     uint64_t limbs=((uint64_t)width+63)/64;
     enum { SIGNED=1, FIXED=2, SATURATING=4, PRODUCT=8, REMAINDER=16 };
     static const unsigned properties[] = {

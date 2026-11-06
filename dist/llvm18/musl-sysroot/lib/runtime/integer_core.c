@@ -14,7 +14,7 @@ static void set(uint64_t *a,uint32_t i,unsigned value) {
 }
 uint32_t __bennett_rt_integer_op(uint64_t *dst,const uint64_t *a,const uint64_t *b,const uint64_t *c,
                                uint32_t width,uint32_t op,uint32_t flag) {
-    if(!width) __bennett_nz_fault(4);
+    if(!width || width>BRT_INTEGER_MAX_WIDTH) __bennett_nz_fault(4);
     if(op>=BRT_INT_MUL) return __bennett_rt_integer_arithmetic(dst,a,b,width,op,flag);
     uint64_t limbs=((uint64_t)width+63)/64;
     uint64_t result[limbs];

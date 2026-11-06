@@ -73,17 +73,18 @@ void *calloc(size_t count, size_t size) {
 
 void free(void *p) {
     if (!p) return;
-    __bennett_nz_free(p); /* reject interior/dead/nonheap before C state changes */
     struct c_allocation **link=&live_allocations;
     while (*link) {
         struct c_allocation *r=*link;
         if (r->base==p) {
+            __bennett_nz_free(p); /* validate before changing C records */
             *link=r->next; r->live=0; r->next=spare_records; spare_records=r;
             return;
         }
         link=&r->next;
     }
-    /* Runtime raw allocations can be freed without a C allocation record. */
+    __bennett_nz_fault(7); /* no live C allocation owns this pointer */
+    __builtin_unreachable();
 }
 
 void *__bennett_rt_aligned_realloc(void *p,size_t n,size_t a) {
