@@ -30,6 +30,18 @@ with tempfile.TemporaryDirectory(dir=os.environ['TMPDIR']) as directory:
         assert 'pin '+'a'*40 in str(error) and 'actual HEAD unavailable' in str(error)
     else:
         raise AssertionError('missing pin accepted')
+    checkout = root/'other'
+    subprocess.run(['git', 'init', '-q', checkout], check=True)
+    subprocess.run(['git', '-C', checkout, '-c', 'user.name=Test', '-c',
+                    'user.email=test@example.invalid', 'commit', '-q', '--allow-empty', '-m', 'fixture'], check=True)
+    actual = subprocess.check_output(['git', '-C', checkout, 'rev-parse', 'HEAD'], text=True).strip()
+    os.environ['EXAMPLE_ROOT'] = str(checkout)
+    try:
+        pinned_sibling('example', root)
+    except RuntimeError as error:
+        assert 'actual HEAD '+actual in str(error)
+    else:
+        raise AssertionError('mismatching HEAD accepted')
     path = root/'layout.ll'
     write_layout(path, 4096, 512)
     assert '{ i64 1, i64 4096, i64 512 }' in path.read_text()

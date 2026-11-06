@@ -2,6 +2,7 @@
 """Host write errors are infrastructure failures, never dialect fault 8."""
 from pathlib import Path
 import os
+import fcntl
 import signal
 import subprocess
 
@@ -29,9 +30,21 @@ for major in (18, 23):
                                        restore_signals=False, timeout=5))
     finally:
         os.close(write_fd)
+    read_fd, write_fd = os.pipe()
+    try:
+        fcntl.fcntl(write_fd, fcntl.F_SETFL, os.O_NONBLOCK)
+        while True:
+            try:
+                os.write(write_fd, b'x'*4096)
+            except BlockingIOError:
+                break
+        failures.append(subprocess.run([exe], stdout=write_fd, stderr=subprocess.PIPE, timeout=5))
+    finally:
+        os.close(read_fd)
+        os.close(write_fd)
     for mode in ('1', '2'):
         failures.append(subprocess.run([exe, mode], capture_output=True, timeout=5))
     for result in failures:
         assert result.returncode == 125, result
         assert result.stderr == b'bennett infrastructure failure: console write\n', result
-    print(f'LLVM {major}: ENOSPC/EBADF/EPIPE/zero/oversized writes exit 125; EINTR/short writes complete')
+    print(f'LLVM {major}: ENOSPC/EBADF/EPIPE/EAGAIN/zero/oversized writes exit 125; EINTR/short writes complete')
