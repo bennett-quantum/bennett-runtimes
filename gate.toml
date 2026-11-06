@@ -10,7 +10,11 @@ BENNETT_ARITH_ROOT = "{sibling:bennett-arith}"
 
 [[check]]
 name = "runtimes gate"
-argv = ["scripts/gate"]
+argv = ["scripts/gate", "--all"]
+
+[[check]]
+name = "quality ratchet"
+argv = ["python3", "-I", "scripts/quality.py"]
 
 [siblings."bennett-conformance"]
 sha = "b077ae2a22e73b2321dcfe2fccede885f47b8d89"
