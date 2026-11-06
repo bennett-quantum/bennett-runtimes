@@ -1,11 +1,11 @@
 # bennett-runtimes
 
 Ordinary runtime C compiled to LLVM 18 and 23 bitcode, pinned to dialect
-**0.2.10 @023f5a771a814270634db3be9cfde88ded69f975** and ISA **0.8**.
+**0.2.13 @1c29c8d71a814270634db3be9cfde88ded69f975** and ISA **0.8**.
 The publication contains the zero-filling allocator, memory helpers, a real
 musl stdio/exit slice and the lifted console model. No device definition
 delegates to host libc, and no production marker or ISA primitive is defined.
-Broader runtime conformance remains in brt-zct and brt-q1k.
+Broader runtime conformance remains tracked in the issue database.
 
 ## Build and gate
 
@@ -142,8 +142,8 @@ bound buffer/capacity/truncation model. Arbitrary syscalls never pass to Linux.
 Dialect **b-dialect-spec-0na** records both readings of the §3.1 native primitive
 exception/configuration ownership and §19.5 transport. This implementation
 follows the explicit native-comparison requirement with production primitives
-left undefined. The UBSan minimal subset below closes brt-nuu.1; full freestanding ASan remains
-tracked in brt-nuu.2 (brt-nuu stays open). No hosted library fallback is used. The driver also
+left undefined. The UBSan minimal subset below provides the implemented diagnostic subset; full freestanding ASan remains
+tracked in the issue database. No hosted library fallback is used. The driver also
 continues to own §17.7 division checks and complete shared layout/launch.
 
 The syscall bridge maps stdout/stderr write/writev to the **undefined** console
@@ -154,7 +154,7 @@ capacity, fault, native-model history and replay rules. Dialect bead
 b-dialect-spec-lbq records both readings of startup/syscall framing/tape details;
 the implementation follows the spec's tier distinction. No unsupported-symbol
 trap stubs replace musl implementations. Remaining VFS/device/thread and broader
-libc families remain promised scope under brt-zct/brt-q1k.
+libc families remain promised scope in the issue database.
 
 ### O0 diagnostic: compiler-rt UBSan minimal subset (LLVM 18 and 23)
 
@@ -208,7 +208,7 @@ requires `_DYNAMIC`, and loader APIs (`dlsym`, `dlvsym`, `dladdr`), pthread
 TLS/stack/atfork and additional libc/libm symbols remain unresolved. Adding
 those names as stubs would not provide shadow setup, constructors, allocator
 poisoning or working interceptors. No ASan runtime artifact or passing ASan
-execution is claimed. brt-nuu.2 retains the complete ASan port and memory-fault
+execution is claimed. The open ASan work retains the complete port and memory-fault
 acceptance obligation; driver cyg.3 must consume this subset honestly while
 keeping full ASan acceptance outstanding.
 
@@ -219,3 +219,16 @@ aborts. It also records real ASan strict-link failures under
 `.tmp/sanitizer-tests/asan-link-M.log`; those are rejection evidence, not an
 ASan-positive faulty-fixture result. Full same-path and relocated-source byte
 reproduction includes the new artifacts and manifests.
+
+Current coordination: [bennett/HANDOFF.md](../bennett/HANDOFF.md).
+
+Run `scripts/gate` (or `scripts/gate --fast`) for the bounded LLVM 18/23 subset.
+`scripts/gate --all` retains every slow test and publication reproduction for the push gate;
+`--slow` runs the slow tests alone. `--promised` deliberately fails while the helper
+contract gaps listed in `tests/promised-helpers.toml` remain open.
+
+Build with `scripts/build 18 --incremental` (or 23) to reuse content-addressed
+intermediates under `TMPDIR`. Omit `--incremental` for a clean build.
+`TMPDIR`, `BENNETT_LLVM18_BIN`, and `BENNETT_LLVM23_BIN` are caller-overridable.
+Sibling inputs resolve only through `gate.toml` pins.
+Coverage and the quality baseline are recorded in [docs/quality.md](docs/quality.md).
