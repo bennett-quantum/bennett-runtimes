@@ -25,7 +25,7 @@ whole-program entry catches it (§14.7). The original native sysroot test path
 uses a Linux exit_group transport and verifies buffered flush and exit status.
 It does not prove the driver's materialised exit path.
 
-Remaining VFS/thread/runtime families retain scope under brt-zct.
+Remaining VFS/thread/runtime families retain scope in the issue database.
 Materialised native comparisons use `scripts/native-check 18|23 INPUT.bc
 CHECKED.bc` after the materialised device module is fixed and before merging
 `musl-sysroot/lib/native-support.bc`. The adapter adds checks to a separate
@@ -105,7 +105,7 @@ matching the prepared libc state. These use the pinned target headers and
 upstream data/code; they make no host locale, sysconf or auxv query. The API
 test checks every lconv field and the page size before and after explicit
 process preparation, with static checked-native O0/O2 builds on both majors.
-Further locale/runtime capabilities remain within brt-zct's full scope.
+Further locale/runtime capabilities remain within the full runtime scope.
 
 Comparison `_start` registers its Linux input objects, calls preparation, then
 uses `exit(main(argc, argv, environ))`. A main return and explicit `exit` run

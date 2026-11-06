@@ -40,3 +40,10 @@ __pycache__/
 !vendor/compiler-rt/llvm*/libclang_rt.ubsan_minimal-x86_64.a
 !dist/llvm*/libclang_rt.ubsan_minimal-x86_64.a
 !dist/llvm*/sanitizer-support.bc
+
+*.pyc
+*.log
+.beads/**/LOCK
+*.darc
+!src/runtime/control.ll
+!dist/llvm*/musl-sysroot/lib/runtime/control.ll

@@ -15,5 +15,5 @@ Tests compare the emitted signatures with both publications and execute a stock
 Julia 1.13 boxed-object method under the LLVM23 materialised native checker,
 including its real type-header and payload stores. This verifies the allocation
 boundary. Complete Julia process/TLS/safepoint, GC-statistics, exceptions and
-standard-library integration remain broader runtime work under brt-zct; this
+standard-library integration remain broader runtime work tracked in the issue database; this
 test is not whole-program rung-5 evidence.
