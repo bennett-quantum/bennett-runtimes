@@ -11,7 +11,8 @@ SHA='a9a118bbe84d8764da0ea0d28b3ab3fae8477fc7e4085d90102b8596fc7c75e4'
 PATCHES=['vendor/musl-exact-string-bounds.patch','vendor/musl-zero-memory-file.patch']
 # Explicit closure, including real vfprintf (not just the optimised puts route),
 # wide conversions, stdio flushing and exit handlers. No musl allocator objects.
-FILES='''stdio/printf stdio/vfprintf stdio/puts stdio/fputs stdio/fwrite
+FILES='''
+stdio/snprintf stdio/vsnprintf stdio/fprintf stdio/printf stdio/vfprintf stdio/puts stdio/fputs stdio/fwrite
 stdio/__towrite stdio/__overflow stdio/__stdio_write
 stdio/__stdout_write stdio/__stdio_close stdio/__stdio_seek stdio/stdout
 stdio/stderr stdio/__stdio_exit stdio/__lockfile stdio/ofl stdio/fflush

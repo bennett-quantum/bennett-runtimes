@@ -1,8 +1,8 @@
 status = "rung-2-allocation-slice"
 
 [specs.bennett-dialect-spec]
-version = "0.2.10"
-commit = "023f5a771a814270634db3be9cfde88ded69f975"
+version = "0.2.13"
+commit = "1c29c8d731228b67902c3fa72e410e1bb71d16b4"
 path = "spec/Bennett-Dialect-Spec.md"
 
 [specs.bennett-isa-spec]

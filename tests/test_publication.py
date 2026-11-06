@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Consumer edge: recorded/fresh closure and independent native golden cases."""
+import tomllib
 import hashlib
 import json
 import os
@@ -7,9 +8,12 @@ from pathlib import Path
 import re
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, pinned_sibling
 ROOT = Path(__file__).resolve().parents[1]
-CONFORMANCE = Path(os.environ.get('BENNETT_CONFORMANCE_ROOT', ROOT.parent/'bennett-conformance'))
-ARITH = Path(os.environ.get('BENNETT_ARITH_ROOT', ROOT.parent/'bennett-arith'))
+CONFORMANCE = pinned_sibling('bennett-conformance')
+ARITH = pinned_sibling('bennett-arith')
 RUNG = CONFORMANCE/'ladder/rung-2'
 TMP = ROOT/'.tmp'/'publication'
 TMP.mkdir(parents=True, exist_ok=True)
@@ -28,8 +32,6 @@ grow 64 1083288250354
 grow 1000 54380828149874
 '''
 
-def run(*args):
-    return subprocess.check_output([str(a) for a in args], stderr=subprocess.PIPE)
 
 def names(ir, keyword):
     return set(re.findall(rf'^{keyword} .*?@([^ (]+)\(', ir, re.M))
@@ -38,14 +40,14 @@ def nonintrinsic_undefined(ir):
     return {n for n in names(ir, 'declare') if not n.startswith('llvm.')}
 
 for major in (18, 23):
-    llvm = Path(f'/usr/lib/llvm-{major}/bin')
+    llvm = llvm_dir(major)
     dist = ROOT/f'dist/llvm{major}'
     bc = dist/'musl-sysroot/lib/bennett-allocator.bc'
     arith = ARITH/f'dist/llvm{major}/bennett-arith.bc'
     manifest = json.loads((dist/'manifest.json').read_text())
     assert manifest['llvm_major'] == major
     assert manifest['sha256'] == hashlib.sha256((dist/'bennett-runtimes.bc').read_bytes()).hexdigest()
-    assert manifest['dialect_commit'] == '023f5a771a814270634db3be9cfde88ded69f975'
+    assert manifest['dialect_commit'] == tomllib.loads((ROOT/'SPEC_VERSIONS.toml').read_text())['specs']['bennett-dialect-spec']['commit']
     assert set(manifest['exports']) >= EXPORTS
     for source, expected in manifest['sources'].items():
         assert hashlib.sha256((ROOT/source).read_bytes()).hexdigest() == expected, source

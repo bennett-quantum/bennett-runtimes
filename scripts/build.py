@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Deterministic major-matched publication; no timestamps or checkout paths."""
+import argparse
 import hashlib
+import os
+import tempfile
 import json
 from pathlib import Path
 import re
@@ -14,6 +17,7 @@ _module.loader.exec_module(musl)
 ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ['src/allocator/bump.c', 'src/libc/memory.c', 'src/allocator/language.c', 'julia-shim/alloc.c', 'src/libc/utc.c', 'src/fenv/environment.c', 'src/device/console.c', 'src/device/models.c', 'src/device/transports.c', 'src/musl/vfs.c', 'src/musl/syscall.c', 'src/runtime/shadow.c', 'src/runtime/integer_core.c', 'src/runtime/integer_arithmetic.c', 'src/runtime/control.c']
 EXPORTS = ['__bennett_rt_memmove', '__bennett_rt_memset', 'calloc', 'free', 'malloc', 'memset']
+CACHE = None
 FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
          '-ffreestanding', '-fno-builtin', '-fno-vectorize', '-fno-slp-vectorize',
          '-fno-ident', '-Wall', '-Wextra', '-Werror']
@@ -21,18 +25,29 @@ FLAGS = ['-target', 'x86_64-unknown-linux-musl', '-std=c11', '-O2', '-flto',
 def sha(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
-def run(*args):
-    return subprocess.check_output([str(a) for a in args], text=True, cwd=ROOT)
+def run(*args, cwd=ROOT):
+    if CACHE is not None:
+        return CACHE.execute(args, cwd)
+    return subprocess.check_output([str(a) for a in args], text=True, cwd=cwd)
 
-def build(major):
+def build(major, out, scratch, incremental):
+    global CACHE
     if major not in ('18', '23'):
         raise SystemExit('usage: scripts/build 18|23 [output-directory]')
-    llvm = Path(f'/usr/lib/llvm-{major}/bin')
-    out = Path(sys.argv[2]).resolve() if len(sys.argv) > 2 else ROOT/f'dist/llvm{major}'
+    llvm = Path(os.environ.get(f'BENNETT_LLVM{major}_BIN', f'/usr/lib/llvm-{major}/bin'))
+    out = out.resolve()
     out.mkdir(parents=True, exist_ok=True)
-    scratch = ROOT/'.tmp'/f'build-{major}'
-    scratch.mkdir(parents=True, exist_ok=True)
     files, musl_flags = musl.prepare(ROOT, out, scratch)
+    if incremental:
+        cache_spec = importlib.util.spec_from_file_location('build_cache', ROOT/'scripts/build_cache.py')
+        cache_module = importlib.util.module_from_spec(cache_spec)
+        cache_spec.loader.exec_module(cache_module)
+        headers = hashlib.sha256()
+        for directory in (scratch, ROOT/'src', out/'musl-sysroot/include'):
+            for header in sorted(directory.rglob('*.h')):
+                headers.update(str(header.relative_to(directory)).encode())
+                headers.update(header.read_bytes())
+        CACHE = cache_module.BuildCache(Path(os.environ['TMPDIR'])/f'build-cache-{major}', headers.hexdigest())
     objects = []
     for source in SOURCES:
         ll = scratch/(Path(source).stem+'.ll')
@@ -89,7 +104,11 @@ def build(major):
     run(llvm/'llvm-link', *objects[:2], '-o', core)
     for i, source in enumerate(files):
         ll = scratch/f'musl-{i}.ll'
-        run(llvm/'clang', *musl_flags, '-S', source.relative_to(ROOT), '-o', ll)
+        local_source = source.is_relative_to(scratch)
+        # LLVM 23 hashes the frontend source name into local-symbol GUIDs.
+        # Give it a stable relative path before IR emission, including in TMPDIR.
+        compile_root = scratch if local_source else ROOT
+        run(llvm/'clang', *musl_flags, '-S', source.relative_to(compile_root), '-o', ll, cwd=compile_root)
         text = ll.read_text()
         text = re.sub(r'^; ModuleID = .*\n', '', text, flags=re.M)
         logical = str(source.relative_to(scratch)) if source.is_relative_to(scratch) else str(source.relative_to(ROOT))
@@ -145,8 +164,8 @@ def build(major):
     assert not re.search(r'^define .*@(?:__bennett_nz_|__bennett_effect_)', ir, re.M)
     manifest = {
         'implementation': 'musl-device-vfs-native-v3', 'llvm_major': int(major),
-        'target': 'x86_64-unknown-linux-musl', 'dialect': '0.2.10',
-        'dialect_commit': '023f5a771a814270634db3be9cfde88ded69f975',
+        'target': 'x86_64-unknown-linux-musl', 'dialect': '0.2.13',
+        'dialect_commit': '1c29c8d731228b67902c3fa72e410e1bb71d16b4',
         'isa': '0.8', 'sha256': sha(artifact), 'exports': exports,
         'effect_imports': sorted(set(re.findall(r'^declare .*?@(__bennett_effect_[^ (]+)\(', ir, re.M))),
         'undefined_imports': sorted(line.split()[-1] for line in run(llvm/'llvm-nm', '--undefined-only', artifact).splitlines() if line.split()),
@@ -202,7 +221,7 @@ def build(major):
         'tools': {name: run(llvm/name, '--version').splitlines()[0]
                   for name in ('clang', 'llvm-as', 'llvm-link', 'opt')},
         'sources': {s: sha(ROOT/s) for s in SOURCES +
-                    ['scripts/build', 'scripts/build.py', 'scripts/musl.py', 'scripts/integer_helpers.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/runtime/shadow.h', 'src/runtime/integer.h', 'src/runtime/control.ll', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
+                    ['scripts/build', 'scripts/build.py', 'scripts/build_cache.py', 'scripts/pinned_sibling.py', 'scripts/musl.py', 'scripts/integer_helpers.py', 'scripts/native-link', 'scripts/native-check', 'scripts/native-check.cpp', 'scripts/native-check-link', 'scripts/native-sanitizer-link', 'src/native/sanitizer.c', 'src/musl/context.c', 'src/musl/vfs.h', 'src/runtime/shadow.h', 'src/runtime/integer.h', 'src/runtime/control.ll', 'src/native/start.S', 'src/native/layout.h', *native_sources, *musl.PATCHES, 'SPEC_VERSIONS.toml']},
     }
     # Atomic file replacement prevents consumers observing partial bitcode.
     temporary = out/'.bennett-runtimes.bc.new'
@@ -211,7 +230,17 @@ def build(major):
     (out/'manifest.json').write_text(json.dumps(manifest, indent=2, sort_keys=True)+'\n')
     (out/'SHA256SUMS').write_text(''.join(f'{sha(out/name)}  {name}\n'
                                         for name in ('bennett-runtimes.bc', 'bennett-runtimes-native.bc', 'musl-sysroot/lib/native-support.bc', 'sanitizer-support.bc', sanitizer_archive, 'COMPILER-RT-COPYRIGHT', 'COMPILER-RT-LICENSE', 'manifest.json')))
+    if CACHE is not None:
+        print(f'cache: {CACHE.hits} hits, {CACHE.misses} misses')
     print(f'LLVM {major}: {manifest["sha256"]}  {out/"bennett-runtimes.bc"}')
 
 if __name__ == '__main__':
-    build(sys.argv[1] if len(sys.argv) > 1 else '')
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('major', choices=('18', '23'))
+    parser.add_argument('output', nargs='?', type=Path)
+    parser.add_argument('--incremental', action='store_true')
+    args = parser.parse_args()
+    os.environ.setdefault('TMPDIR', str(ROOT/'.tmp'))
+    Path(os.environ['TMPDIR']).mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix=f'build-{args.major}-', dir=os.environ['TMPDIR']) as directory:
+        build(args.major, args.output or ROOT/f'dist/llvm{args.major}', Path(directory), args.incremental)
