@@ -7,17 +7,16 @@ from pathlib import Path
 import re
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(os.environ['TMPDIR'])/'process-apis'
 TMP.mkdir(parents=True, exist_ok=True)
 
-def run(*args):
-    r = subprocess.run(list(map(str, args)), capture_output=True, timeout=120)
-    assert r.returncode == 0, (args, r)
-    return r.stdout
 
 for major in (18, 23):
-    llvm = Path(f'/usr/lib/llvm-{major}/bin')
+    llvm = llvm_dir(major)
     dist = ROOT/f'dist/llvm{major}'
     publication = dist/'bennett-runtimes.bc'
     original = hashlib.sha256(publication.read_bytes()).digest()
@@ -33,7 +32,7 @@ for major in (18, 23):
                  '-fno-vectorize', '-fno-slp-vectorize', '-nostdinc', '-isystem', dist/'musl-sysroot/include']
         run(llvm/'clang', *flags, '-emit-llvm', '-c', ROOT/'tests/process_apis.c', '-o', app)
         layout = TMP/f'layout-{major}.ll'
-        layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 570429440,i64 1048576}, align 8\n')
+        write_layout(layout, 570429440, 1048576)
         closure = TMP/f'closure-{major}-{level}.bc'
         checked = TMP/f'checked-{major}-{level}.bc'
         native = TMP/f'native-{major}-{level}.bc'

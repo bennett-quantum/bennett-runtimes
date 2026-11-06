@@ -6,13 +6,12 @@ from pathlib import Path
 import resource
 import signal
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'native-byval'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 CASES={
  'copy-and-caller-live':('''%r = call i64 @copy(ptr byval(%V) align 8 %local)
  %old = load i64, ptr %local, align 8
@@ -181,7 +180,7 @@ define i32 @main(i32 %argc,ptr %argv) {
  switch i8 %which,label %bad [ CASES ]
 '''
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     text=body.replace('CASES',' '.join(f'i8 {33+i},label %case{i}' for i in range(len(CASES))))
     for i,(label,(instructions,code)) in enumerate(CASES.items()):
         text+=f'case{i}:\n'+instructions+'\n %status = select i1 %ok,i32 0,i32 93\n ret i32 %status\n'

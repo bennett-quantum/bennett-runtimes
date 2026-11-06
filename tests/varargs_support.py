@@ -4,6 +4,9 @@ import os
 from pathlib import Path
 import shlex
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 def materialise(major,source,output):
     source,output=Path(source),Path(output)
@@ -13,7 +16,7 @@ def materialise(major,source,output):
     key=hashlib.sha256(cpp.read_bytes()).hexdigest()[:20]
     cache=Path(os.environ['TMPDIR'])/'varargs-fixture'; cache.mkdir(parents=True,exist_ok=True)
     exe=cache/f'n23-{major}-{key}'
-    llvm=Path(f'/usr/lib/llvm-{major}/bin')
+    llvm=llvm_dir(major)
     if not exe.exists():
         flags=subprocess.check_output([llvm/'llvm-config','--cxxflags','--ldflags','--system-libs','--libs','core','irreader','bitwriter'],text=True)
         subprocess.run([llvm/'clang++',*shlex.split(flags),'-std=c++17','-O2',cpp,'-o',exe],check=True)

@@ -5,12 +5,15 @@ import os
 import signal
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import llvm_dir
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(os.environ['TMPDIR'])/'transport-errors'
 TMP.mkdir(parents=True, exist_ok=True)
 for major in (18, 23):
     exe = TMP/f'transport-{major}'
-    subprocess.run([f'/usr/lib/llvm-{major}/bin/clang', '-O2', '-ffunction-sections',
+    subprocess.run([str(llvm_dir(major)/'clang'), '-O2', '-ffunction-sections',
                     '-Wl,--gc-sections', ROOT/'tests/transport_errors.c',
                     ROOT/'src/native/syscall.c', ROOT/'src/native/heap.c', '-o', exe], check=True)
     result = subprocess.run([exe, '3'], capture_output=True, timeout=5)

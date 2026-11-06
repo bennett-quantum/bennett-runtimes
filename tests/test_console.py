@@ -4,13 +4,14 @@ from pathlib import Path
 import re
 import resource
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=ROOT/'.tmp/console-tests'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-def run(*args):
-    return subprocess.check_output(list(map(str,args)),stderr=None)
 for m in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{m}/bin')
+    llvm=llvm_dir(m)
     dist=ROOT/f'dist/llvm{m}'
     ir=run(llvm/'llvm-dis',dist/'bennett-runtimes.bc','-o','-').decode()
     assert re.search(r'^define .*@__bennett_dev_console_write\(',ir,re.M), 'console model missing'

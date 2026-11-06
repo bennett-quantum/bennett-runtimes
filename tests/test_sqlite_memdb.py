@@ -15,6 +15,9 @@ import sqlite3
 import signal
 import subprocess
 import zipfile
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 spec=importlib.util.spec_from_file_location('varargs_support',ROOT/'tests/varargs_support.py')
 support=importlib.util.module_from_spec(spec); spec.loader.exec_module(support)
@@ -47,23 +50,13 @@ for b in data: h=((h^b)*1099511628211)&((1<<64)-1)
 flags=['-DSQLITE_THREADSAFE=0','-DSQLITE_OMIT_LOAD_EXTENSION','-DSQLITE_OS_OTHER=1',
        '-DSQLITE_TEMP_STORE=3','-DSQLITE_DEFAULT_MEMSTATUS=0','-DSQLITE_OMIT_SHARED_CACHE',
        '-DSQLITE_OMIT_DEPRECATED','-DSQLITE_DQS=0']
-def run(*args):
-    # A checked whole SQLite module is a substantial backend compile. Bound
-    # the whole tool process group, including clang/linker descendants.
-    command=list(map(str,args))
-    with subprocess.Popen(command,stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True) as p:
-        try: out,err=p.communicate(timeout=360)
-        except BaseException:
-            os.killpg(p.pid,signal.SIGKILL); p.wait(); raise
-        if p.returncode:
-            print(err.decode(errors='replace'))
-            raise subprocess.CalledProcessError(p.returncode,command,out,err)
-        return out
+from functools import partial
+run = partial(run, timeout=360)
 def terminate(signum,frame):
     raise SystemExit(124)
 signal.signal(signal.SIGTERM,terminate)
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'; objects=[]
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'; objects=[]
     for source in (TMP/'sqlite3.c',ROOT/'tests/sqlite_nofs.c',ROOT/'tests/sqlite_memdb.c'):
         bc=TMP/f'{source.stem}-{major}.bc'; objects.append(bc)
         run(llvm/'clang','--target=x86_64-unknown-linux-musl','-O2','-flto',

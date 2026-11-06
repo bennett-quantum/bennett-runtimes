@@ -1,9 +1,12 @@
 """Test-only primitive support; retains actual production syscall/effect bodies."""
 import subprocess
 from pathlib import Path
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 def link(major, module, output, layout, fault_override=False):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin')
+    llvm=llvm_dir(major)
     flags=['--target=x86_64-unknown-linux-musl','-O2','-ffreestanding','-fno-builtin',
            '-nostdinc','-isystem',ROOT/f'dist/llvm{major}/musl-sysroot/include']
     def run(*args):

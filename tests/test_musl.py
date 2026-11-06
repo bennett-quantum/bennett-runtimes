@@ -5,14 +5,15 @@ import os
 import subprocess
 import json
 import hashlib
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, pinned_sibling
 ROOT = Path(__file__).resolve().parents[1]
-ARITH = Path(os.environ.get('BENNETT_ARITH_ROOT', ROOT.parent/'bennett-arith'))
+ARITH = pinned_sibling('bennett-arith')
 TMP = ROOT/'.tmp/musl-tests'
 TMP.mkdir(parents=True, exist_ok=True)
-def run(*args):
-    return subprocess.check_output(list(map(str,args)), stderr=None)
 for m in (18,23):
-    llvm = Path(f'/usr/lib/llvm-{m}/bin')
+    llvm = llvm_dir(m)
     dist = ROOT/f'dist/llvm{m}'
     sysroot = dist/'musl-sysroot'
     assert (sysroot/'include/stdio.h').is_file(), 'real musl sysroot missing'

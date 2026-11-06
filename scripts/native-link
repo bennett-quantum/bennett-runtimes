@@ -3,7 +3,7 @@
 set -euo pipefail
 unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
 root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
-export TMPDIR="$root/.tmp"
+export TMPDIR="${TMPDIR:-$root/.tmp}"
 if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
   echo 'usage: native-link 18|23 INPUT.bc OUTPUT DRIVER-LAYOUT.bc [COMPARISON.ld] (required resolved layout)' >&2
   exit 1
@@ -11,16 +11,20 @@ fi
 major="$1"; input="$2"; output="$3"; layout="$4"
 case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
 dist="$root/dist/llvm$major"
+llvm_var="BENNETT_LLVM${major}_BIN"
+llvm="${!llvm_var:-/usr/lib/llvm-$major/bin}"
+mkdir -p "$TMPDIR"
 link_flags=()
 if [ "$#" -eq 5 ]; then link_flags+=("-Wl,-T,$5"); fi
 scratch="$(mktemp -d "$TMPDIR/native-link-XXXXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
-arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
+arith_root="$(python3 -I "$root/scripts/pinned_sibling.py" bennett-arith)"
+arith="$arith_root/dist/llvm$major/bennett-arith.bc"
 # Retain startup and libc definitions needed by native codegen libcalls.
-"/usr/lib/llvm-$major/bin/llvm-link" "$input" "$layout" \
+"$llvm/llvm-link" "$input" "$layout" \
   --override="$dist/bennett-runtimes-native.bc" -o "$scratch/native.bc"
-"/usr/lib/llvm-$major/bin/llvm-link" "$scratch/native.bc" "$arith" --only-needed -o "$scratch/closed.bc"
-"/usr/lib/llvm-$major/bin/clang" --target=x86_64-unknown-linux-musl \
+"$llvm/llvm-link" "$scratch/native.bc" "$arith" --only-needed -o "$scratch/closed.bc"
+"$llvm/clang" --target=x86_64-unknown-linux-musl \
   --sysroot="$dist/musl-sysroot" -nostdlib -nostdinc -static -no-pie -O2 \
   -ffreestanding -fno-builtin -Wl,-e,_start -Wl,--no-undefined \
   "${link_flags[@]}" "$scratch/closed.bc" -o "$output"

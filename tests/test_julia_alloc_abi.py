@@ -8,14 +8,15 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'julia-allocation'; TMP.mkdir(parents=True,exist_ok=True)
 julia=Path(os.environ.get('BENNETT_JULIA','/home/tobias/.julia/juliaup/julia-1.13.3+0.x64.linux.gnu/bin/julia'))
-llvm=Path('/usr/lib/llvm-23/bin')
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE,timeout=60)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
+llvm=llvm_dir(23)
+from functools import partial
+run = partial(run, timeout=60)
 raw=TMP/'frontend.ll'
 code='using InteractiveUtils; mutable struct Box; x::Int; end; f(x)=Box(x); open(ARGS[1],"w") do io; code_llvm(io,f,Tuple{Int};raw=true,dump_module=true,optimize=true); end'
 run(julia,'--startup-file=no','-t1','-e',code,raw)
@@ -42,7 +43,7 @@ def signature(ir,kind,name):
     args.append(line[at:end].strip().split()[0])
     return args
 for major in (18,23):
-    ir=run(f'/usr/lib/llvm-{major}/bin/llvm-dis',ROOT/f'dist/llvm{major}/bennett-runtimes.bc','-o','-').decode()
+    ir=run(str(llvm_dir(major)/'llvm-dis'),ROOT/f'dist/llvm{major}/bennett-runtimes.bc','-o','-').decode()
     for name,args in expected.items():
         assert signature(text,'declare',name)==args,(major,name,'frontend')
         assert signature(ir,'define',name)==args,(major,name,'runtime')
@@ -79,7 +80,7 @@ define i32 @main() {
 }
 ''')
 layout=TMP/'layout.ll'
-layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 536875008,i64 65536}, align 8\n')
+write_layout(layout, 536875008, 65536)
 linked=TMP/'linked.bc'; postlink=TMP/'postlink.bc'
 run(llvm/'llvm-link',probe,ROOT/'dist/llvm23/bennett-runtimes.bc','--only-needed','-o',linked)
 run(llvm/'opt','-passes=lto<O3>',linked,'-o',postlink)

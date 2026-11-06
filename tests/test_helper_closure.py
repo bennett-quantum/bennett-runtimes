@@ -4,13 +4,12 @@ import os
 import resource
 from pathlib import Path
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'helper-closure'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-def run(*args):
-    r=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
-    assert r.returncode==0,(args,r)
-    return r.stdout
 modules={
     'shadow-stack':'''declare void @__bennett_rt_ss_init(i64)
 declare ptr @__bennett_rt_ss_push(i64,i64)
@@ -60,9 +59,9 @@ define i32 @main() {
 '''}
 failures=[]
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin')
+    llvm=llvm_dir(major)
     layout=TMP/f'layout-{major}.ll'
-    layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 620761088,i64 1048576}, align 8\n')
+    write_layout(layout, 620761088, 1048576)
     for name,text in modules.items():
         if name.startswith('divide-'):
             # Private emitter tests a non-cache width; public on-demand

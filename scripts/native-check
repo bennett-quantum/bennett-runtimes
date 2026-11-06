@@ -13,9 +13,9 @@ if Path(sys.argv[2]).resolve()==Path(sys.argv[3]).resolve():
 for key in ('DISPLAY','WAYLAND_DISPLAY','DBUS_SESSION_BUS_ADDRESS','BROWSER'):
     os.environ.pop(key,None)
 root=Path(__file__).resolve().parents[1]
-llvm=Path(f'/usr/lib/llvm-{sys.argv[1]}/bin')
+llvm=Path(os.environ.get(f'BENNETT_LLVM{sys.argv[1]}_BIN', f'/usr/lib/llvm-{sys.argv[1]}/bin'))
 source=root/'scripts/native-check.cpp'
-scratch=Path(os.environ.get('TMPDIR',root/'.tmp/sol-runtimes-queue/tmp'))/'native-check'
+scratch=Path(os.environ.get('TMPDIR',root/'.tmp'))/'native-check'
 scratch.mkdir(parents=True,exist_ok=True)
 flags=shlex.split(subprocess.check_output([llvm/'llvm-config','--cxxflags','--ldflags',
                  '--libs','core','irreader','bitwriter','transformutils'],text=True))

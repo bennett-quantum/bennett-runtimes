@@ -7,6 +7,9 @@ import resource
 import signal
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'checked-native'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
@@ -52,15 +55,9 @@ CASES={
     'libcall-body': ('%r = call i64 @strlen(ptr @shortstr)',23),
 }
 
-def run(*args):
-    try:
-        return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as error:
-        print(error.stderr.decode(errors='replace'))
-        raise
 
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     # Each case is already materialised IR. Faulting operations remain present
     # even when original-source optimisation would have erased them.
     ir=['target triple = "x86_64-unknown-linux-musl"',
@@ -94,7 +91,7 @@ for major in (18,23):
     fail=subprocess.run([ROOT/'scripts/native-check',str(major),source,source],capture_output=True)
     assert fail.returncode and b'separate output' in fail.stderr,fail
     config=TMP/f'layout-{major}.ll'
-    config.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 469762048, i64 4096 }, align 8\n')
+    write_layout(config, 469762048, 4096)
     exe=TMP/f'checked-{major}'
     run(ROOT/'scripts/native-check-link',major,source,exe,config)
     assert hashlib.sha256(source.read_bytes()).hexdigest()==original,'adapter modified materialised input'

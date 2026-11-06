@@ -6,16 +6,17 @@ import json
 import os
 import resource
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, pinned_sibling
 ROOT=Path(__file__).resolve().parents[1]
 TMP=ROOT/'.tmp/native-tests'; TMP.mkdir(parents=True,exist_ok=True)
-CORPUS=Path(os.environ.get('BENNETT_CONFORMANCE_ROOT',ROOT.parent/'bennett-conformance'))/'ladder'
-ARITH=Path(os.environ.get('BENNETT_ARITH_ROOT',ROOT.parent/'bennett-arith'))
+CORPUS=pinned_sibling('bennett-conformance')/'ladder'
+ARITH=pinned_sibling('bennett-arith')
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
 GOLDEN=b"basic 0 0\nbasic 1 23131069394\nbasic 7 138063414195\nbasic 64 1083288249908\nbasic 1000 54380828142828\ngrow 0 4\ngrow 1 23131069404\ngrow 7 138063414247\ngrow 64 1083288250354\ngrow 1000 54380828149874\n"
-def run(*args):
-    return subprocess.check_output(list(map(str,args)))
 for m in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{m}/bin'); dist=ROOT/f'dist/llvm{m}'
+    llvm=llvm_dir(m); dist=ROOT/f'dist/llvm{m}'
     native=dist/'bennett-runtimes-native.bc'
     assert native.is_file(), f'LLVM {m}: missing published native closure'
     manifest=json.loads((dist/'manifest.json').read_text())['native']

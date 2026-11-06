@@ -4,16 +4,15 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'varargs-fixture'; TMP.mkdir(parents=True,exist_ok=True)
 spec=importlib.util.spec_from_file_location('varargs_support',ROOT/'tests/varargs_support.py')
 support=importlib.util.module_from_spec(spec); spec.loader.exec_module(support)
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     bc=TMP/f'original-{major}.bc'; normal=TMP/f'n23-{major}.bc'; exe=TMP/f'fixture-{major}'; layout=TMP/f'layout-{major}.ll'
     # O0/noinline preserves the frontend ABI boundaries rather than folding
     # the known sums before the test transformation can exercise them.

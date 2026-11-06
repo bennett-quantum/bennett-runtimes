@@ -6,6 +6,9 @@ import os
 import resource
 import signal
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'sqlite-libc'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
@@ -19,12 +22,8 @@ for year,month,day in dates:
     yday=(d-datetime(year,1,1,tzinfo=timezone.utc)).days
     rows.append(f'{{{t}LL,{year},{month},{day},23,59,59,{(d.weekday()+1)%7},{yday}}}')
 (TMP/'calendar_vectors.h').write_text('static const struct calendar_case calendars[]={'+','.join(rows)+'};\n')
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     names={line.split()[-1] for line in run(llvm/'llvm-nm','--defined-only',dist/'bennett-runtimes.bc').decode().splitlines() if line.split()}
     assert {'bcmp','strncmp','strspn','strcspn','strrchr','localtime'}<=names,'missing SQLite string/UTC definitions'
     bc=TMP/f'libc-{major}.bc'; layout=TMP/f'layout-{major}.ll'; exe=TMP/f'libc-{major}'
@@ -35,7 +34,7 @@ for major in (18,23):
     scalar=TMP/f'scalar-{major}.bc'
     options=['-passes=scalarizer','-scalarize-load-store'] if major==18 else ['-passes=scalarizer<load-store>']
     run(llvm/'opt',*options,bc,'-o',scalar)
-    layout.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 520093696, i64 16384 }, align 8\n')
+    write_layout(layout, 520093696, 16384)
     run(ROOT/'scripts/native-check-link',major,scalar,exe,layout)
     subprocess.run([exe],check=True,timeout=20)
     r=subprocess.run([exe,'fault'],capture_output=True,timeout=10)

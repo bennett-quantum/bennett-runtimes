@@ -13,14 +13,13 @@ from pathlib import Path
 import random
 import re
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'integer-helpers'; TMP.mkdir(parents=True,exist_ok=True)
 spec=importlib.util.spec_from_file_location('integer_helpers',ROOT/'scripts/integer_helpers.py')
 helper=importlib.util.module_from_spec(spec); spec.loader.exec_module(helper)
-def run(*args):
-    r=subprocess.run(list(map(str,args)),capture_output=True,timeout=180)
-    assert r.returncode==0,(args,r)
-    return r.stdout
 def signed(x,w): return x-(1<<w) if x>>(w-1) else x
 def expected(op,w,a,b,c,flag):
     mask=(1<<w)-1
@@ -73,7 +72,7 @@ def expected(op,w,a,b,c,flag):
     raise AssertionError(op)
 widths=list(range(1,17))+[24,31,32,63,64,65,127,128,129,192,257,521]
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); publication=ROOT/f'dist/llvm{major}/bennett-runtimes.bc'
+    llvm=llvm_dir(major); publication=ROOT/f'dist/llvm{major}/bennett-runtimes.bc'
     before=hashlib.sha256(publication.read_bytes()).digest()
     ir=run(llvm/'llvm-dis',publication,'-o','-').decode()
     triple=re.search(r'target triple = "([^"]+)"',ir)[1]

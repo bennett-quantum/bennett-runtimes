@@ -5,20 +5,19 @@ import os
 import resource
 import signal
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'process'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     bc=TMP/f'process-{major}.bc'; layout=TMP/f'layout-{major}.ll'
     flags=['--target=x86_64-unknown-linux-musl','-O2','-ffreestanding','-fno-builtin',
            '-nostdinc','-isystem',dist/'musl-sysroot/include','-emit-llvm','-c']
     run(llvm/'clang',*flags,ROOT/'tests/process.c','-o',bc)
-    layout.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 503316480, i64 4096 }, align 8\n')
+    write_layout(layout, 503316480, 4096)
     exe=TMP/f'process-{major}'
     run(ROOT/'scripts/native-link',major,bc,exe,layout)
     for name in ('/opt/bin/context-probe','context-probe','/opt/bin/',''):

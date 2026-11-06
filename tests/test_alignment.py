@@ -3,10 +3,13 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'alignment'; TMP.mkdir(parents=True,exist_ok=True)
 for major in (18,23):
-    clang=f'/usr/lib/llvm-{major}/bin/clang'
+    clang=str(llvm_dir(major)/'clang')
     obj=TMP/f'bump-{major}.o'
     subprocess.run([clang,'-O2','-ffreestanding','-fno-builtin','-Dmalloc=runtime_malloc',
                     '-Dcalloc=runtime_calloc','-Dfree=runtime_free','-Drealloc=runtime_realloc','-c',ROOT/'src/allocator/bump.c','-o',obj],check=True)

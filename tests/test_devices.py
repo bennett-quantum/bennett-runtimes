@@ -6,16 +6,17 @@ import re
 import resource
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT = Path(__file__).resolve().parents[1]
 TMP = Path(os.environ['TMPDIR'])/'devices'
 TMP.mkdir(parents=True, exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 
-def run(*args):
-    return subprocess.check_output(list(map(str, args)), stderr=subprocess.PIPE, timeout=120)
 
 for major in (18, 23):
-    llvm = Path(f'/usr/lib/llvm-{major}/bin')
+    llvm = llvm_dir(major)
     dist = ROOT/f'dist/llvm{major}'
     ir = run(llvm/'llvm-dis', dist/'bennett-runtimes.bc', '-o', '-').decode()
     names = ['__bennett_dev_clock_read', '__bennett_dev_entropy_read',
@@ -70,7 +71,7 @@ for major in (18, 23):
     checked = TMP/f'checked-{major}.bc'
     run(llvm/'clang', *flags, ROOT/'tests/devices_checked.c', '-o', checked)
     layout = TMP/f'layout-{major}.ll'
-    layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 553652224,i64 1048576}, align 8\n')
+    write_layout(layout, 553652224, 1048576)
     exe = TMP/f'checked-{major}'
     run(ROOT/'scripts/native-check-link', major, checked, exe, layout)
     assert not run(llvm/'llvm-nm', '--undefined-only', exe).strip()

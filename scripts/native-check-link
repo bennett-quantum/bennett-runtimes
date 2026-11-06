@@ -3,18 +3,20 @@
 set -euo pipefail
 unset DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
 root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
-export TMPDIR="${TMPDIR:-$root/.tmp/sol-runtimes-queue/tmp}"
+export TMPDIR="${TMPDIR:-$root/.tmp}"
 if [ "$#" -lt 4 ] || [ "$#" -gt 5 ]; then
   echo 'usage: native-check-link 18|23 MATERIALISED.bc OUTPUT LAYOUT.bc [COMPARISON.ld]' >&2
   exit 1
 fi
 major="$1"; input="$2"; output="$3"; layout="$4"
 case "$major" in 18|23) ;; *) echo 'expected LLVM 18 or 23' >&2; exit 1;; esac
-llvm="/usr/lib/llvm-$major/bin"; dist="$root/dist/llvm$major"
+llvm_var="BENNETT_LLVM${major}_BIN"
+llvm="${!llvm_var:-/usr/lib/llvm-$major/bin}"; dist="$root/dist/llvm$major"
 mkdir -p "$TMPDIR"
 scratch="$(mktemp -d "$TMPDIR/checked-link-XXXXXXXX")"
 trap 'rm -rf "$scratch"' EXIT
-arith="${BENNETT_ARITH_ROOT:-$(dirname "$root")/bennett-arith}/dist/llvm$major/bennett-arith.bc"
+arith_root="$(python3 -I "$root/scripts/pinned_sibling.py" bennett-arith)"
+arith="$arith_root/dist/llvm$major/bennett-arith.bc"
 # Retain libc codegen/exit closure while preserving every materialised body.
 "$llvm/llvm-link" "$dist/bennett-runtimes.bc" --override="$input" "$layout" -o "$scratch/closure.bc"
 "$llvm/llvm-link" "$scratch/closure.bc" "$arith" --only-needed -o "$scratch/materialised.bc"

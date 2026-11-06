@@ -5,20 +5,19 @@ from pathlib import Path
 import resource
 import signal
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'wide-allocators'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 required={'aligned_alloc','memalign','posix_memalign','strdup','strndup',
           '_Znwm','_Znam','_ZnwmRKSt9nothrow_t','_ZnamRKSt9nothrow_t',
           '_ZnwmSt11align_val_t','_ZnamSt11align_val_t',
           '__rust_alloc','__rust_alloc_zeroed','__rust_realloc','__rust_dealloc',
           'jl_gc_alloc','ijl_gc_alloc_typed','ijl_gc_small_alloc','ijl_gc_big_alloc','julia.gc_alloc_obj'}
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     names={l.split()[-1] for l in run(llvm/'llvm-nm','--defined-only',dist/'bennett-runtimes.bc').decode().splitlines() if l.split()}
     assert required<=names,('missing production allocators',sorted(required-names))
     ir=run(llvm/'llvm-dis',dist/'bennett-runtimes.bc','-o','-').decode()
@@ -32,7 +31,7 @@ for major in (18,23):
     layout=TMP/f'layout-{major}.ll'
     # Page aligned but deliberately not 8192 aligned: the initial heap base
     # is not known to ordinary C until a primitive allocation returns it.
-    layout.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 536875008, i64 1048576 }, align 8\n')
+    write_layout(layout, 536875008, 1048576)
     for source in ('wide_allocators.c','new.cpp'):
         name=Path(source).stem; bc=TMP/f'{name}-{major}.bc'; scalar=TMP/f'scalar-{name}-{major}.bc'; exe=TMP/f'{name}-{major}'
         flags=['-std=c++17','-fno-exceptions','-fno-rtti','-fsized-deallocation'] if source.endswith('.cpp') else []

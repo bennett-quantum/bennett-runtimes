@@ -5,12 +5,15 @@ import resource
 import signal
 import subprocess
 
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import llvm_dir
 ROOT = Path(__file__).resolve().parents[1]
 TMP = ROOT / '.tmp' / 'tests'
 TMP.mkdir(parents=True, exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
 for major in (18, 23):
-    clang = f'/usr/lib/llvm-{major}/bin/clang'
+    clang = str(llvm_dir(major)/'clang')
     exe = TMP / f'allocator-{major}'
     dist=ROOT/f'dist/llvm{major}'
     flags=['--target=x86_64-unknown-linux-musl', '-O2', '-ffreestanding', '-fno-builtin',

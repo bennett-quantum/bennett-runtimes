@@ -4,25 +4,24 @@ from pathlib import Path
 import os
 import re
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout, pinned_sibling
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'fenv'; TMP.mkdir(parents=True,exist_ok=True)
-def run(*args):
-    try: return subprocess.check_output(list(map(str,args)),stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError as e:
-        print(e.stderr.decode(errors='replace')); raise
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin'); dist=ROOT/f'dist/llvm{major}'
+    llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     ir=run(llvm/'llvm-dis',dist/'bennett-runtimes.bc','-o','-').decode()
     definitions=re.findall(r'^@__bennett_rt_fenv = .*$',ir,re.M)
     assert len(definitions)==1 and re.search(r'global \{ i32, i32 \} zeroinitializer, section "\.data\.__bennett_rt_fenv", align 4(?:, !guid !\d+)?$',definitions[0]),definitions
-    arith=Path(os.environ.get('BENNETT_ARITH_ROOT',ROOT.parent/'bennett-arith'))/f'dist/llvm{major}/bennett-arith.bc'
+    arith=pinned_sibling('bennett-arith')/f'dist/llvm{major}/bennett-arith.bc'
     a=run(llvm/'llvm-dis',arith,'-o','-').decode()
     assert re.search(r'^@__bennett_rt_fenv = external global \{ i32, i32 \}',a,re.M)
     flags=['--target=x86_64-unknown-linux-musl','-O2','-ffreestanding','-fno-builtin',
            '-nostdinc','-isystem',dist/'musl-sysroot/include','-emit-llvm','-c']
     bc=TMP/f'fenv-{major}.bc'; layout=TMP/f'layout-{major}.ll'
     run(llvm/'clang',*flags,ROOT/'tests/fenv.c','-o',bc)
-    layout.write_text('@__bennett_rt_native_layout = constant { i64, i64, i64 } { i64 1, i64 486539264, i64 4096 }, align 8\n')
+    write_layout(layout, 486539264, 4096)
     exe=TMP/f'fenv-{major}'
     run(ROOT/'scripts/native-link',major,bc,exe,layout)
     subprocess.run([exe],check=True,timeout=10)

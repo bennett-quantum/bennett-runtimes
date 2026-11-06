@@ -4,10 +4,13 @@ from pathlib import Path
 import os
 import re
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import llvm_dir
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'allocator-history';TMP.mkdir(parents=True,exist_ok=True)
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin')
+    llvm=llvm_dir(major)
     ir=subprocess.check_output([llvm/'llvm-dis',ROOT/f'dist/llvm{major}/musl-sysroot/lib/bennett-allocator.bc','-o','-'],text=True)
     for name in ('malloc','calloc','free','realloc','memset'):
         ir=re.sub(r'@'+name+r'(?=[(\s},])', '@test_'+name,ir)

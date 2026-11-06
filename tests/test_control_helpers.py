@@ -3,12 +3,11 @@
 import os
 from pathlib import Path
 import subprocess
+import sys
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'control-helpers'; TMP.mkdir(parents=True,exist_ok=True)
-def run(*args):
-    r=subprocess.run(list(map(str,args)),capture_output=True,timeout=120)
-    assert r.returncode==0,(args,r)
-    return r.stdout
 source='''@__bennett_rt_tls = external global i8
 @__bennett_rt_reg_sp = external global i64
 @__stack_chk_guard = external global i64
@@ -107,11 +106,11 @@ define i32 @main() {
 }
 '''
 for major in (18,23):
-    llvm=Path(f'/usr/lib/llvm-{major}/bin')
+    llvm=llvm_dir(major)
     module=TMP/f'control-{major}.ll'; module.write_text(source)
     run(llvm/'opt','-passes=verify','-disable-output',module)
     layout=TMP/f'layout-{major}.ll'; exe=TMP/f'control-{major}'
-    layout.write_text('@__bennett_rt_native_layout = constant {i64,i64,i64} {i64 1,i64 654315520,i64 1048576}, align 8\n')
+    write_layout(layout, 654315520, 1048576)
     run(ROOT/'scripts/native-check-link',major,module,exe,layout)
     assert run(exe)==b''
     print(f'LLVM{major}: typed EH state/type IDs/resume, jump-buffer/nonlocal state, unaligned trampoline record and guards PASS',flush=True)
