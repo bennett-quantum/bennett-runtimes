@@ -57,7 +57,11 @@ def terminate(signum,frame):
 signal.signal(signal.SIGTERM,terminate)
 for major in (18,23):
     llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'; objects=[]
-    for source in (TMP/'sqlite3.c',ROOT/'tests/sqlite_nofs.c',ROOT/'tests/sqlite_memdb.c'):
+    # Generic syscall dispatch retains non-console effect routes even for
+    # this memory-only application. Materialise them through the published
+    # device models; unbound devices still fault if a route is ever executed.
+    for source in (TMP/'sqlite3.c',ROOT/'tests/sqlite_nofs.c',ROOT/'tests/sqlite_memdb.c',
+                   ROOT/'tests/device_effects.c'):
         bc=TMP/f'{source.stem}-{major}.bc'; objects.append(bc)
         run(llvm/'clang','--target=x86_64-unknown-linux-musl','-O2','-flto',
             '-nostdinc','-isystem',dist/'musl-sysroot/include','-I',TMP,*flags,'-emit-llvm','-c',source,'-o',bc)
