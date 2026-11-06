@@ -13,7 +13,7 @@ long __bennett_rt_transport_console_write(long fd,const void *p,uint64_t len) {
     while(left) {
         long n=__bennett_rt_native_os(1,target,(long)bytes,left,0,0,0);
         if(n==-4) continue;
-        if(n<=0 || (uint64_t)n>left) __bennett_nz_fault(8);
+        if(n<=0 || (uint64_t)n>left) __bennett_rt_native_infrastructure("console write");
         bytes+=n; left-=n;
     }
     return len;
