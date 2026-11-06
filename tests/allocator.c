@@ -5,6 +5,7 @@ extern void *malloc(size_t);
 extern void *calloc(size_t, size_t);
 extern void free(void *);
 extern void *__bennett_rt_alloc(uint64_t);
+extern void __bennett_nz_free(void *);
 extern void __bennett_rt_memset(void *, unsigned char, uint64_t);
 extern void __bennett_rt_memmove(void *, const void *, uint64_t);
 extern void *memset(void *, int, size_t);
@@ -21,6 +22,11 @@ int main(int argc, char **argv) {
         case 'd': free(p); free(p); return 20;
         case 'i': free(p + 1); return 21;
         case 'g': free((void *)(uintptr_t)0x1234); return 22;
+        case 'u': free(__bennett_rt_alloc(3)); return 26;
+        case 'p': {
+            void *raw = __bennett_rt_alloc(3);
+            __bennett_nz_free(raw); __bennett_nz_free(raw); return 27;
+        }
         case 'o': observed=malloc(SIZE_MAX); return 23;
         case 'c': observed=calloc(SIZE_MAX / 2 + 1, 2); return 24;
         case 'h': for (;;) { void *q = malloc(128); free(q); } /* history exhausts */
@@ -53,6 +59,6 @@ int main(int argc, char **argv) {
     unsigned char *aligned = malloc(1);
     if ((uintptr_t)aligned != (uintptr_t)odd + _Alignof(max_align_t)) return 39;
     if ((uintptr_t)aligned % _Alignof(max_align_t)) return 40;
-    free(odd); free(aligned);
+    __bennett_nz_free(odd); free(aligned);
     return 0;
 }
