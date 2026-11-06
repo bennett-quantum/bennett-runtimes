@@ -1,0 +1,4 @@
+# Required helpers remain owed; no substitute implementations are supplied.
+bead = "brt-4dk"
+blocked_by = "brt-4dk.1"
+symbols = ["__bennett_rt_eh_match", "__bennett_rt_fiber_switch", "__bennett_rt_poll"]

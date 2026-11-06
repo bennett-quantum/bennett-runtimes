@@ -1,46 +1,52 @@
-#!/usr/bin/env bash
-set -euo pipefail
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE DISPLAY WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS BROWSER
-root="$(dirname "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")")"
-export TMPDIR="${TMPDIR:-$root/.tmp}"
-mkdir -p "$TMPDIR"
-rebuild="$(mktemp -d "$TMPDIR/reproduce-XXXXXXXX")"
-trap 'rm -rf "$rebuild"' EXIT
-for major in 18 23; do
-  "$root/scripts/build" "$major" "$rebuild/llvm$major"
-  for name in bennett-runtimes.bc bennett-runtimes-native.bc sanitizer-support.bc libclang_rt.ubsan_minimal-x86_64.a COMPILER-RT-COPYRIGHT COMPILER-RT-LICENSE manifest.json SHA256SUMS; do
-    cmp "$root/dist/llvm$major/$name" "$rebuild/llvm$major/$name"
-  done
-  diff -r "$root/dist/llvm$major/musl-sysroot" "$rebuild/llvm$major/musl-sysroot"
-done
-python3 -I "$root/tests/test_reproducibility.py"
-python3 -I "$root/tests/test_alignment.py"
-python3 -I "$root/tests/test_runtime.py"
-python3 -I "$root/tests/test_publication.py"
-python3 -I "$root/tests/test_musl.py"
-python3 -I "$root/tests/test_native.py"
-python3 -I "$root/tests/test_checked_native.py"
-python3 -I "$root/tests/test_global_ranges.py"
-python3 -I "$root/tests/test_native_byval.py"
-python3 -I "$root/tests/test_fenv.py"
-python3 -I "$root/tests/test_process.py"
-python3 -I "$root/tests/test_process_apis.py"
-python3 -I "$root/tests/test_sqlite_libc.py"
-python3 -I "$root/tests/test_realloc.py"
-python3 -I "$root/tests/test_wide_allocators.py"
-python3 -I "$root/tests/test_julia_alloc_abi.py"
-python3 -I "$root/tests/test_file_io.py"
-python3 -I "$root/tests/test_varargs_fixture.py"
-python3 -I "$root/tests/test_sqlite_memdb.py"
-python3 -I "$root/tests/test_allocator_history.py"
-python3 -I "$root/tests/test_console.py"
-python3 -I "$root/tests/test_transport_errors.py"
-python3 -I "$root/tests/test_descriptor_close.py"
-python3 -I "$root/tests/test_libc_routes.py"
-python3 -I "$root/tests/test_helper_closure.py"
-python3 -I "$root/tests/test_shadow_stack.py"
-python3 -I "$root/tests/test_integer_helpers.py"
-python3 -I "$root/tests/test_control_helpers.py"
-python3 -I "$root/tests/test_devices.py"
-python3 -I "$root/tests/test_sanitizers.py"
-echo 'gate: LLVM 18/23 publications reproduced; runtime and corpus closure PASS'
+#!/usr/bin/env python3
+"""Default bounded tests; --all is the complete publication/push suite."""
+import argparse
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tempfile
+import tomllib
+
+ROOT = Path(__file__).resolve().parents[1]
+
+def reproduce():
+    with tempfile.TemporaryDirectory(prefix='reproduce-', dir=os.environ['TMPDIR']) as directory:
+        for major in (18, 23):
+            out = Path(directory)/f'llvm{major}'
+            subprocess.run([ROOT/'scripts/build', str(major), out], check=True, timeout=240)
+            baseline = ROOT/f'dist/llvm{major}'
+            expected = {p.relative_to(baseline) for p in baseline.rglob('*') if p.is_file()}
+            actual = {p.relative_to(out) for p in out.rglob('*') if p.is_file()}
+            assert expected == actual, (major, expected ^ actual)
+            for name in sorted(expected):
+                subprocess.run(['cmp', baseline/name, out/name], check=True)
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group()
+    for mode in ('fast', 'slow', 'all', 'promised'):
+        group.add_argument('--'+mode, action='store_const', dest='mode', const=mode)
+    parser.add_argument('--list', choices=('fast', 'slow', 'promised'))
+    args = parser.parse_args()
+    suites = tomllib.loads((ROOT/'tests/suites.toml').read_text())
+    if args.list:
+        print('\n'.join(suites[args.list]))
+        return
+    for key in ('GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE', 'DISPLAY',
+                'WAYLAND_DISPLAY', 'DBUS_SESSION_BUS_ADDRESS', 'BROWSER'):
+        os.environ.pop(key, None)
+    os.environ.setdefault('TMPDIR', str(ROOT/'.tmp/tests'))
+    Path(os.environ['TMPDIR']).mkdir(parents=True, exist_ok=True)
+    mode = args.mode or 'fast'
+    if mode == 'all':
+        reproduce()
+    names = suites['fast']+suites['slow'] if mode == 'all' else suites[mode]
+    for name in names:
+        subprocess.run([sys.executable, '-I', ROOT/'tests'/name], check=True, timeout=1800)
+    if mode != 'promised':
+        subprocess.run([sys.executable, '-I', ROOT/'tests/test_promised_helpers.py', '--report'], check=True)
+    print(f'gate: {mode} suite PASS (LLVM 18/23)')
+
+if __name__ == '__main__':
+    main()
