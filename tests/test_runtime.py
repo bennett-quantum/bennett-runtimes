@@ -27,10 +27,11 @@ for major in (18, 23):
     subprocess.run([ROOT/'scripts/native-link',str(major),source,exe,layout],check=True)
     subprocess.run([str(exe)], check=True)
     for case, message in [('d', b'fault 7'), ('i', b'fault 7'),
-                          ('g', b'fault 7'), ('o', b'fault 2'),
+                          ('g', b'fault 7'), ('u', b'fault 7'),
+                          ('p', b'fault 7'), ('o', b'fault 2'),
                           ('c', b'fault 2'), ('h', b'fault 2'),
                           ('t', b'fault 2')]:
         result = subprocess.run([str(exe), case], capture_output=True, timeout=5)
         assert result.returncode == -signal.SIGILL, (major, case, result)
         assert message in result.stderr, (major, case, result.stderr)
-    print(f'LLVM {major}: allocation addresses/zero-fill/history, memory helpers, seven traps PASS')
+    print(f'LLVM {major}: allocation addresses/zero-fill/history, memory helpers, nine traps PASS')
