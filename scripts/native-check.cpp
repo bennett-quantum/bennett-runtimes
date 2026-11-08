@@ -12,6 +12,7 @@
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "llvm/Transforms/Utils/BasicBlockUtils.h"
+#include "native-varargs.h"
 using namespace llvm;
 
 int main(int argc, char **argv) {
@@ -75,7 +76,7 @@ int main(int argc, char **argv) {
   for (Function &F:*M) {
     if (F.isDeclaration()) continue;
     SmallVector<Instruction *,256> original;
-    bool hasStackObject=false;
+    bool hasStackObject=F.isVarArg();
     for (Instruction &I:instructions(F)) {
       original.push_back(&I); hasStackObject|=isa<AllocaInst>(I);
     }
@@ -164,6 +165,7 @@ int main(int argc, char **argv) {
       }
     }
   }
+  NativeVarargs(*M).instrument(check,add);
   if (verifyModule(*M,&errs())) return 1;
   std::error_code ec; raw_fd_ostream output(argv[2],ec,sys::fs::OF_None);
   if (ec) { errs()<<ec.message()<<"\n"; return 1; }

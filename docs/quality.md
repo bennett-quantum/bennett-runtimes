@@ -64,6 +64,38 @@ scratch is 1 MiB and division scratch is about 6 MiB, so callers still need an
 appropriate execution stack. C free rejects missing live C ownership before
 primitive mutation; direct primitive users retain their primitive free entry.
 
+## Native variadic storage
+
+The comparison adapter retains the System V native variadic calling convention.
+After `va_start`, it registers the ABI's register-save object (176 bytes, or 48 with SSE disabled/soft-float) and the
+incoming overflow argument area under the callee's ordinary stack mark. Each
+variadic call saves/restores its overflow extent, including indirect calls;
+variadic entry captures that extent so nested calls and repeated `va_start`
+do not change the enclosing invocation's bounds. `va_copy` validates both
+24-byte list objects. LLVM target feature information selects the exact save
+area extent, including feature implications. The existing return cleanup expires the hidden storage.
+
+Comparison-private probe functions ask LLVM for the stack extents of the named
+parameters and all actual parameters. Their difference is the overflow extent.
+The probe preserves return/parameter ABI attributes, and represents unnamed
+vectors wider than XMM as stack `byval` parameters. This keeps the backend's
+alignment, register exhaustion, aggregate copies and stack padding rules in one
+owner. Probe bodies are instrumentation, introduced after source checks, and
+do not enter the device object or replace application/runtime definitions.
+The adapter cache key includes the instrumentation header.
+
+`tests/test_native_varargs.py` asserts raw native integer/pointer/FP/byval,
+indirect-call, register/stack exhaustion, forwarded/copy/restarted-list behavior,
+plus exact register/overflow bounds and return lifetime at O0/O2 on both majors.
+Its C values are hand-derived. This component test does not claim R execution,
+ISA agreement or full rung-3 acceptance.
+
+Its 600-second execution/outer hang guard and the shared command helper's
+180-second guard are infrastructure bounds, not performance assertions. Both
+exceed ten times the 10.52-second prepared-driver native reproduction measured
+on `tobias-ThinkPad-X1-Carbon-Gen-11` on 2026-11-08 (wall 10.52, user 9.34,
+system 2.05 seconds); machine factor 1. A guard trip is UNKNOWN (124).
+
 ## Build reproducibility
 
 `--incremental` caches intermediates by source/input content, the complete

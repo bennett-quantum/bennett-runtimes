@@ -54,14 +54,34 @@ static NOINLINE void bounds(int mode, ...) {
     if (mode==4) escaped=list->overflow;
     va_end(ap);
 }
+static NOINLINE void exhausted(int a,int b,int c,int d,int e,int f,
+        double p,double q,double r,double s,double t,double u,double v,double w,...) {
+    (void)a;(void)b;(void)c;(void)d;(void)e;(void)f;
+    (void)p;(void)q;(void)r;(void)s;(void)t;(void)u;(void)v;
+    va_list ap; va_start(ap,w);
+    __bennett_rt_native_check(0,1); /* No save object may authorize null. */
+    va_end(ap);
+}
+static NOINLINE __attribute__((target("no-sse"))) int integer_only(int n,...) {
+    va_list ap; va_start(ap,n); int total=0;
+    if (n<0) {
+        struct List *list=(void *)ap;
+        __bennett_rt_native_check(list->save+47,2);
+    }
+    while (n-->0) total+=va_arg(ap,int);
+    va_end(ap); return total;
+}
 int main(int argc,char **argv) {
     int mode=argc>1?argv[1][0]-'0':0;
+    if (mode==6) { integer_only(-1,1,2,3,4,5,6); return 98; }
+    if (mode==5) { exhausted(1,2,3,4,5,6,1.,2.,3.,4.,5.,6.,7.,8.); return 97; }
     if (mode) {
         bounds(mode,1,2,3,4,5,6,7,8,9,10);
         if (mode>=3) __bennett_rt_native_check(escaped,1);
         return 94;
     }
     int v=29; struct Large large={{101,202,303,404,505}};
+    if (integer_only(7,1,2,3,4,5,6,7)!=28) return 99;
     if (sum(0)!=0 || sum(10,1,2,3,4,5,6,7,8,9,10)!=55) return 91;
     if (indirect(6,17,18,19,20,21,22)!=117) return 92;
     if (restart(2,3,4)!=40 || !mixed(0,17,&v,1.25,2.5L,large,31)) return 93;

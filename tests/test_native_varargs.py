@@ -12,6 +12,8 @@ from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'native-varargs'; TMP.mkdir(parents=True,exist_ok=True)
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
+# Hang guards, measured and classified in docs/quality.md.
+EXECUTION_HANG_GUARD=600
 for major in (18,23):
     llvm=llvm_dir(major); dist=ROOT/f'dist/llvm{major}'
     source=TMP/f'input-{major}.bc'
@@ -31,8 +33,8 @@ for major in (18,23):
         run(llvm/'clang','--target=x86_64-unknown-linux-musl',f'-O{level}',
             '-nostdlib','-nostdinc','-static','-no-pie','-ffreestanding','-fno-builtin',
             '-Wl,-e,_start','-Wl,--no-undefined',native,'-o',exe)
-        for mode in range(5):
-            result=subprocess.run([exe,str(mode)],capture_output=True,timeout=10)
+        for mode in range(7):
+            result=subprocess.run([exe,str(mode)],capture_output=True,timeout=EXECUTION_HANG_GUARD)
             expected=(0,b'',b'') if not mode else (
                 -signal.SIGILL,b'',b'bennett runtime fault 7\n')
             assert (result.returncode,result.stdout,result.stderr)==expected,(major,level,mode,result)
