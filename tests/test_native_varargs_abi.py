@@ -76,23 +76,24 @@ int main(void) { return take(0, 1., 2., 3., 4., 5., 6., 7., 8., 2.0Q); }
 
 
 class VariadicABI(unittest.TestCase):
-    def check_case(self, name, source, extent, expected):
+    def check_case(self, name, source, extent, expected, flags=(), execute=True):
         for major in (18, 23):
             with self.subTest(major=major, case=name):
                 llvm = llvm_dir(major)
                 src = TMP/f'{name}-{major}.c'; src.write_text(source)
                 bc = src.with_suffix('.bc')
                 run(llvm/'clang', '--target=x86_64-unknown-linux-musl', '-O0',
-                    '-nostdinc', '-isystem', ROOT/f'dist/llvm{major}/musl-sysroot/include',
+                    *flags, '-nostdinc', '-isystem', ROOT/f'dist/llvm{major}/musl-sysroot/include',
                     '-ffreestanding', '-fno-builtin', '-emit-llvm', '-c', src, '-o', bc)
                 layout = TMP/f'layout-{major}.ll'; write_layout(layout, 0x1a000000, 1048576)
                 for script in (('native-link', 'native-check-link') if expected == OK
                                else ('native-check-link',)):
                     exe = TMP/f'{name}-{major}-{script}'
                     run(ROOT/'scripts'/script, major, bc, exe, layout)
-                    result = subprocess.run([exe], capture_output=True, timeout=RUN_HANG_GUARD_S)
-                    self.assertEqual((result.returncode, result.stdout, result.stderr), expected,
-                                     (major, name, script))
+                    if execute:
+                        result = subprocess.run([exe], capture_output=True, timeout=RUN_HANG_GUARD_S)
+                        self.assertEqual((result.returncode, result.stdout, result.stderr), expected,
+                                         (major, name, script))
                 self.check_extent(major, bc, extent)
 
     def check_extent(self, major, bc, extent):
@@ -141,6 +142,88 @@ class VariadicABI(unittest.TestCase):
                                       f'  call void (i32, ...) @take(i32 0, {args})\n'
                                       '  ret void\n}\n')
                         self.check_extent(major, ir, extent)
+
+
+    def test_named_avx_operands(self):
+        # Named wide vectors arrive directly in IR and consume a single SIMD
+        # register. Unnamed wide vectors instead arrive as stack byval copies.
+        for width, flag in ((32, '-mavx'), (64, '-mavx512f')):
+            for read in (False, True):
+                source = ('#include <stdarg.h>\n'
+                          f'typedef float V __attribute__((vector_size({width})));\n'
+                          '__attribute__((noinline)) static int take(int n, V v, ...) {\n'
+                          + ('va_list ap; va_start(ap,v); int x=va_arg(ap,int); va_end(ap);\n'
+                             if read else 'int x=42;\n')
+                          + f'return n+(v[{width//4-1}]!=8.f)+(x!=42); }}\n'
+                          + f'int main(void) {{ V v={{0}}; v[{width//4-1}]=8.f; return take(0,v,42); }}\n')
+                # Linking AVX-512 is required even on hosts unable to run it.
+                execute = width == 32 or 'avx512f' in Path('/proc/cpuinfo').read_text()
+                self.check_case(f'named-vector-{width}-{read}', source, 0, OK,
+                                flags=(flag,), execute=execute)
+
+    def check_direct(self, name, ty, value, extent, offset=None, expected=OK):
+        # Six i64s after the named int force the last i64 onto stack[0:8].
+        # These raw va_list reads test the actual passed storage, independently
+        # of clang's C type coercions and va_arg lowering.
+        for major in (18, 23):
+            with self.subTest(major=major, case=name):
+                ir = TMP/f'{name}-{major}.ll'
+                loads = ('%q = getelementptr i8, ptr %p, i64 8\n'
+                         '%v = load volatile i64, ptr %q, align 8\n')
+                if offset is not None:
+                    loads += (f'%past = getelementptr i8, ptr %p, i64 {offset}\n'
+                              '%unused = load volatile i8, ptr %past, align 1\n')
+                ir.write_text('target datalayout = "e-m:e-i64:64-i128:128-f80:128-n8:16:32:64-S128"\n'
+                              'target triple = "x86_64-unknown-linux-musl"\n'
+                              'declare void @llvm.va_start(ptr)\n'
+                              'declare void @llvm.va_end(ptr)\n'
+                              'define i32 @take(i32 %n, ...) {\n'
+                              '%ap = alloca [24 x i8], align 16\n'
+                              'call void @llvm.va_start(ptr %ap)\n'
+                              '%pp = getelementptr i8, ptr %ap, i64 8\n'
+                              '%p = load ptr, ptr %pp, align 8\n'
+                              '%head = load volatile i64, ptr %p, align 8\n'
+                              + loads + 'call void @llvm.va_end(ptr %ap)\n'
+                              '%c1 = icmp eq i64 %head, 1\n'
+                              '%c2 = icmp eq i64 %v, 7\n'
+                              '%both = and i1 %c1, %c2\n'
+                              '%bad = xor i1 %both, true\n'
+                              '%r = zext i1 %bad to i32\n ret i32 %r\n}\n'
+                              'define i32 @main() {\n'
+                              '%r = call i32 (i32, ...) @take(i32 0, '
+                              + ', '.join(['i64 1']*6+[f'{ty} {value}'])
+                              + ')\n ret i32 %r\n}\n')
+                layout = TMP/f'layout-{major}.ll'; write_layout(layout, 0x1a000000, 1048576)
+                for script in ('native-link', 'native-check-link'):
+                    exe = TMP/f'{name}-{major}-{script}'
+                    run(ROOT/'scripts'/script, major, ir, exe, layout)
+                    result = subprocess.run([exe], capture_output=True, timeout=RUN_HANG_GUARD_S)
+                    # LLVM18 misaligns direct non-i128 wide integers; its
+                    # value control returns 1 on both paths (review evidence).
+                    if script == 'native-link' or expected == OK:
+                        status = 1 if (major == 18 and ty in ('i65', 'i96')) or ty == '<1 x i1>' else 0
+                        want = (status, b'', b'')
+                    else:
+                        want = expected
+                    self.assertEqual((result.returncode, result.stdout, result.stderr), want,
+                                     (major, name, script))
+                self.check_extent(major, ir, extent)
+
+    def test_integer_chunks(self):
+        for ty in ('i65', 'i96'):
+            self.check_direct(f'{ty}-valid', ty, '7', 24)
+            self.check_direct(f'{ty}-past-end', ty, '7', 24, 24, FAULT7)
+
+    def test_single_element_stack_vector(self):
+        self.check_direct('v1i64-valid', '<1 x i64>', '<i64 7>', 16)
+        self.check_direct('v1i64-past-end', '<1 x i64>', '<i64 7>', 16, 16, FAULT7)
+
+    def test_single_element_integer_vectors(self):
+        # v1i1/v1i8/v1i16/v1i32 legalize to a GP scalar, not SSE.
+        for bits in (1, 8, 16, 32):
+            self.check_direct(f'v1i{bits}-spill', f'<1 x i{bits}>',
+                              f'<i{bits} 7>' if bits > 1 else '<i1 1>', 16,
+                              16, FAULT7)
 
 
 if __name__ == '__main__':
