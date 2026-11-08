@@ -96,6 +96,30 @@ int main(int argc, char **argv) {
   // realigns the stack to the widest such alignment, so offsets align up
   // from the area base, and va_arg aligns the overflow pointer the same
   // way before each over-aligned read.
+  // Classification table for frontend ABI-lowered operands (System V AMD64
+  // ABI 1.0, section 3.2.3, Classification / Passing; __bf16: section 3.1.2):
+  // https://gitlab.com/x86-psABIs/x86-64-ABI/-/raw/master/x86-64-ABI/low-level-sys-info.tex
+  // LLVM operand                 ABI classes       Registers / stack fallback
+  // integer <=64, pointer        INTEGER           1 GP / 8 bytes, align 8
+  // integer 65..128              INTEGER x2        2 GP / 16 bytes, align 16
+  // half, bfloat, float, double   SSE               1 XMM / size rounded to 8
+  // fp128                        SSE,SSEUP         1 XMM / 16 bytes, align 16
+  // x86_fp80                     X87,X87UP         stack: 16 bytes, align 16
+  // fixed vector <=64 bits       SSE               1 XMM / size rounded to 8
+  // fixed vector 65..128 bits    SSE,SSEUP         1 XMM / size rounded to 8
+  // byval aggregate/vector       MEMORY (lowered)  stack: allocation size,
+  //                                                explicit or ABI alignment
+  // Direct wider/scalable vectors, integers >128 and other scalar/aggregate
+  // operands need frontend ABI lowering; fail loud if still present here.
+  // In particular, unnamed 256/512-bit vectors use the stack; the frontend
+  // supplies byval with its 32/64-byte alignment. Register-class aggregates
+  // arrive as coerced/split scalar operands, not as byval pointers.
+  // Allocation is left-to-right across six GP and eight XMM registers. SSEUP
+  // shares the preceding SSE register. If an entire operand cannot fit, put
+  // it on the stack without consuming any registers (including an i128 with
+  // only one GP left). Stack slots round size/alignment up to at least 8;
+  // SSE fallbacks retain DataLayout ABI alignment. Named operands consume
+  // registers/stack too; publish only stack end minus named stack end.
   auto variadicOverflowBytes=[&](CallBase *CB) -> uint64_t {
     unsigned named=CB->getFunctionType()->getNumParams();
     if (CB->arg_size()<named)
