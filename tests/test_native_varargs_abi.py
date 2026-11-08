@@ -168,13 +168,20 @@ class VariadicABI(unittest.TestCase):
         for major in (18, 23):
             with self.subTest(major=major, case=name):
                 ir = TMP/f'{name}-{major}.ll'
-                loads = ('%q = getelementptr i8, ptr %p, i64 8\n'
+                integer_chunks = ty in ('i65', 'i96')
+                argument_offset = 16 if major == 18 and integer_chunks else 8
+                actual_extent = 32 if major == 18 and integer_chunks else extent
+                actual_offset = actual_extent if offset is not None else None
+                loads = (f'%q = getelementptr i8, ptr %p, i64 {argument_offset}\n'
                          '%v = load volatile i64, ptr %q, align 8\n')
                 if ty in ('<1 x i1>', '<1 x i8>', '<1 x i16>', '<1 x i32>'):
                     loads = loads.replace('%v = load volatile i64, ptr %q, align 8',
                                           '%byte = load volatile i8, ptr %q, align 1\n%v = zext i8 %byte to i64')
+                if integer_chunks:
+                    loads += (f'%hi = getelementptr i8, ptr %p, i64 {argument_offset+8}\n'
+                              '%upper = load volatile i64, ptr %hi, align 8\n')
                 if offset is not None:
-                    loads += (f'%past = getelementptr i8, ptr %p, i64 {offset}\n'
+                    loads += (f'%past = getelementptr i8, ptr %p, i64 {actual_offset}\n'
                               '%unused = load volatile i8, ptr %past, align 1\n')
                 expected_value = 1 if ty == '<1 x i1>' else 7
                 ir.write_text('target datalayout = "e-m:e-i64:64-i128:128-f80:128-n8:16:32:64-S128"\n'
@@ -190,8 +197,10 @@ class VariadicABI(unittest.TestCase):
                               + loads + 'call void @llvm.va_end(ptr %ap)\n'
                               '%c1 = icmp eq i64 %head, 1\n'
                               f'%c2 = icmp eq i64 %v, {expected_value}\n'
-                              '%both = and i1 %c1, %c2\n'
-                              '%bad = xor i1 %both, true\n'
+                              '%lowok = and i1 %c1, %c2\n'
+                              + ('%highok = icmp eq i64 %upper, 1\n%both = and i1 %lowok, %highok\n'
+                                 if integer_chunks else '%both = and i1 %lowok, true\n')
+                              + '%bad = xor i1 %both, true\n'
                               '%r = zext i1 %bad to i32\n ret i32 %r\n}\n'
                               'define i32 @main() {\n'
                               '%r = call i32 (i32, ...) @take(i32 0, '
@@ -202,21 +211,20 @@ class VariadicABI(unittest.TestCase):
                     exe = TMP/f'{name}-{major}-{script}'
                     run(ROOT/'scripts'/script, major, ir, exe, layout)
                     result = subprocess.run([exe], capture_output=True, timeout=RUN_HANG_GUARD_S)
-                    # LLVM18 misaligns direct non-i128 wide integers; its
-                    # value control returns 1 on both paths (review evidence).
+                    # LLVM18 caller assembly inserts 8 bytes of padding
+                    # before direct i65/i96, unlike LLVM23's ABI chunk layout.
                     if script == 'native-link' or expected == OK:
-                        status = 1 if major == 18 and ty in ('i65', 'i96') else 0
-                        want = (status, b'', b'')
+                        want = OK
                     else:
                         want = expected
                     self.assertEqual((result.returncode, result.stdout, result.stderr), want,
                                      (major, name, script))
-                self.check_extent(major, ir, extent)
+                self.check_extent(major, ir, actual_extent)
 
     def test_integer_chunks(self):
         for ty in ('i65', 'i96'):
-            self.check_direct(f'{ty}-valid', ty, '7', 24)
-            self.check_direct(f'{ty}-past-end', ty, '7', 24, 24, FAULT7)
+            self.check_direct(f'{ty}-valid', ty, '18446744073709551623', 24)
+            self.check_direct(f'{ty}-past-end', ty, '18446744073709551623', 24, 24, FAULT7)
 
     def test_single_element_stack_vector(self):
         self.check_direct('v1i64-valid', '<1 x i64>', '<i64 7>', 16)
@@ -253,6 +261,60 @@ class VariadicABI(unittest.TestCase):
                     want = ((125, b'', b'bennett infrastructure failure: unclassified SysV variadic argument storage\n')
                             if started else OK)
                     self.assertEqual((result.returncode, result.stdout, result.stderr), want)
+
+
+
+    def test_named_avx_sse_exhaustion(self):
+        # LLVM's SysV vararg backend stack-passes even a named AVX vector.
+        # All eight doubles still fit XMM0..7. The next read must fault at
+        # overflow+0; no overflow bytes were passed after the named operand.
+        source = r"""
+#include <stdarg.h>
+typedef float V __attribute__((vector_size(32)));
+__attribute__((noinline)) static int take(int n, V v, ...) {
+ va_list ap; va_start(ap,v);
+ for(int i=0;i<8;i++) { volatile double d=va_arg(ap,double); if(d!=1.)return 1; }
+ READ
+ va_end(ap); return n+(v[7]!=8.f);
+}
+int main(void) {return take(0,(V){1,2,3,4,5,6,7,8},1.,1.,1.,1.,1.,1.,1.,1.);}
+"""
+        self.check_case('named-avx-sse-valid', source.replace('READ', ''), 0, OK, ('-mavx',))
+        self.check_case('named-avx-sse-overread', source.replace('READ',
+                        'volatile double d=va_arg(ap,double); (void)d;'), 0, FAULT7, ('-mavx',))
+
+    def test_legalized_vector_spills(self):
+        # Each of these is widened to 128 bits by both backend versions,
+        # including single half/bfloat vectors and sub-64-bit integer vectors.
+        for ty in ('<1 x half>', '<1 x bfloat>', '<2 x i8>', '<2 x i16>',
+                   '<2 x i32>', '<2 x float>', '<2 x half>', '<2 x bfloat>', '<4 x i1>'):
+            for major in (18, 23):
+                for past in (False, True):
+                    with self.subTest(ty=ty, major=major, past=past):
+                        stem = re.sub(r'[^a-zA-Z0-9]', '_', ty)+f'-{past}-{major}'
+                        ir = TMP/f'spill-{stem}.ll'
+                        ir.write_text('target datalayout = "e-m:e-i64:64-i128:128-f80:128-n8:16:32:64-S128"\n'
+                                      'target triple = "x86_64-unknown-linux-musl"\n'
+                                      'declare void @llvm.va_start(ptr)\n'
+                                      'define i32 @take(i32 %n, ...) {\n'
+                                      '%ap = alloca [24 x i8], align 16\n'
+                                      'call void @llvm.va_start(ptr %ap)\n'
+                                      '%pp = getelementptr i8, ptr %ap, i64 8\n'
+                                      '%p = load ptr, ptr %pp, align 8\n'
+                                      f'%q = getelementptr i8, ptr %p, i64 {16 if past else 15}\n'
+                                      '%v = load volatile i8, ptr %q, align 1\n'
+                                      'ret i32 0\n}\n'
+                                      'define i32 @main() {\n'
+                                      '%r = call i32 (i32, ...) @take(i32 0, '
+                                      + ', '.join(['double 1.0']*8+[f'{ty} zeroinitializer'])
+                                      + ')\nret i32 %r\n}\n')
+                        layout = TMP/f'layout-{major}.ll'; write_layout(layout, 0x1a000000, 1048576)
+                        for script in (('native-check-link',) if past else ('native-link', 'native-check-link')):
+                            exe = TMP/f'spill-{stem}-{script}'
+                            run(ROOT/'scripts'/script, major, ir, exe, layout)
+                            result = subprocess.run([exe], capture_output=True, timeout=RUN_HANG_GUARD_S)
+                            self.assertEqual((result.returncode, result.stdout, result.stderr), FAULT7 if past else OK)
+                        self.check_extent(major, ir, 16)
 
 
 if __name__ == '__main__':
