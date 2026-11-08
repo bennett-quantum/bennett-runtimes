@@ -11,8 +11,8 @@ from common import run,llvm_dir,write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'native-varargs-vector';TMP.mkdir(parents=True,exist_ok=True)
 # This AVX native ABI fixture uses a host with AVX, as does its original control.
-# An 8-lane vector sums to36;4096 calls sum to147456. A leaked32-byte
-# probe slot per iteration would require131072 bytes, exceeding this64KiB
+# An 8-lane vector sums to 36; 4096 calls sum to 147456. A leaked 32-byte
+# probe slot per iteration would require 131072 bytes, exceeding this 64 KiB
 # resource fixture. Both original and checked execution must still succeed.
 def stack_fixture():
     resource.setrlimit(resource.RLIMIT_STACK,(65536,65536))
@@ -57,7 +57,7 @@ attributes #0 = { \"target-features\"=\"+avx\" }
             # Hang guard only; see docs/quality.md. Assertions count work/bytes.
             result=subprocess.run([exe],capture_output=True,timeout=600,preexec_fn=stack_fixture)
             assert (result.returncode,result.stdout,result.stderr)==(0,b'',b''),(major,label,level,result)
-            print(f'LLVM{major} {label} O{level}:4096 wide-vector calls return147456 with64KiB stack PASS',flush=True)
+            print(f'LLVM{major} {label} O{level}: 4096 wide-vector calls return 147456 with 64 KiB stack PASS',flush=True)
 
     # Without AVX the backend splits this raw vector into register arguments.
     # The C callee's attempted stack read has no incoming overflow object;
@@ -69,7 +69,9 @@ attributes #0 = { \"target-features\"=\"+avx\" }
     run(llvm/'llvm-link',callee,register,dist/'bennett-runtimes.bc',layout,'-o',raw)
     run(ROOT/'scripts/native-check',major,raw,adapted)
     run(llvm/'llvm-link',adapted,'--override='+str(dist/'musl-sysroot/lib/native-support.bc'),'-o',native)
-    run(llvm/'clang','-O0','-nostdlib','-static','-no-pie','-ffreestanding','-fno-builtin','-Wl,-e,_start',native,'-o',exe)
-    result=subprocess.run([exe],capture_output=True,timeout=600,preexec_fn=stack_fixture)
-    assert (result.returncode,result.stdout,result.stderr)==(-signal.SIGILL,b'',b'bennett runtime fault 7\n'),(major,result)
-    print(f'LLVM{major}: register-split vector does not authorize missing overflow storage PASS',flush=True)
+    for level in (0,2):
+        exe=TMP/f'register-{major}-O{level}'
+        run(llvm/'clang',f'-O{level}','-nostdlib','-static','-no-pie','-ffreestanding','-fno-builtin','-Wl,-e,_start',native,'-o',exe)
+        result=subprocess.run([exe],capture_output=True,timeout=600,preexec_fn=stack_fixture)
+        assert (result.returncode,result.stdout,result.stderr)==(-signal.SIGILL,b'',b'bennett runtime fault 7\n'),(major,level,result)
+        print(f'LLVM{major} O{level}: register-split vector rejects missing overflow storage PASS',flush=True)

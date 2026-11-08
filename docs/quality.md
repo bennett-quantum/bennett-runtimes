@@ -82,6 +82,13 @@ vectors wider than XMM as stack `byval` parameters. This keeps the backend's
 alignment, register exhaustion, aggregate copies and stack padding rules in one
 owner. Probe bodies are instrumentation, introduced after source checks, and
 do not enter the device object or replace application/runtime definitions.
+Wide-vector probe temporaries are allocated once in the caller's entry block,
+so repeated calls reuse storage. `test_native_varargs_vector.py` exercises
+4096 calls returning the hand-derived sum 147456 with a 64 KiB stack resource
+fixture; both original and checked executions must succeed. That native AVX
+ABI fixture requires an AVX host, as does its original control. A raw
+register-split non-AVX argument must not authorize nonexistent overflow storage;
+probe conversion follows LLVM target features.
 The adapter cache key includes the instrumentation header.
 
 `tests/test_native_varargs.py` asserts raw native integer/pointer/FP/byval,

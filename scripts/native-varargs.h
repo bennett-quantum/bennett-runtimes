@@ -25,11 +25,12 @@ class NativeVarargs {
   DenseMap<Function *, Value *> incoming;
   unsigned serial=0;
 
-  // SysV unnamed vectors wider than XMM are stack arguments even when named
-  // vectors use AVX registers. A byval probe parameter preserves that row.
+  // With AVX, unnamed vectors wider than XMM are stack arguments while
+  // named vectors use registers. Without AVX, preserve backend register splits.
   bool stackVector(CallInst *call, unsigned index, unsigned fixed) {
     Type *T=call->getArgOperand(index)->getType();
-    return index>=fixed && T->isVectorTy() && M.getDataLayout().getTypeAllocSize(T).getFixedValue()>VectorSlotBytes;
+    return index>=fixed && T->isVectorTy() && M.getDataLayout().getTypeAllocSize(T).getFixedValue()>VectorSlotBytes &&
+           nativeFeatures(*call->getFunction())->checkFeatures("+avx");
   }
 
   AttributeSet returnABI(CallInst *call) {
@@ -51,7 +52,8 @@ class NativeVarargs {
       if (stackVector(call,i,fixed)) {
         Type *T=value->getType();
         auto align=M.getDataLayout().getABITypeAlign(T);
-        auto *slot=B.CreateAlloca(T,nullptr,"native.va.vector"); slot->setAlignment(align);
+        IRBuilder<> entry(&*call->getFunction()->getEntryBlock().getFirstInsertionPt());
+        auto *slot=entry.CreateAlloca(T,nullptr,"native.va.vector"); slot->setAlignment(align);
         B.CreateAlignedStore(value,slot,align); value=slot;
         AttrBuilder byval(M.getContext()); byval.addByValAttr(T); byval.addAlignmentAttr(align);
         attr=AttributeSet::get(M.getContext(),byval);
@@ -114,7 +116,7 @@ class NativeVarargs {
     IRBuilder<> after(call->getNextNode()); after.CreateStore(previous,extent);
   }
 
-  uint64_t saveBytes(Function &F) {
+  std::unique_ptr<MCSubtargetInfo> nativeFeatures(Function &F) {
     StringRef cpu=F.hasFnAttribute("target-cpu")?F.getFnAttribute("target-cpu").getValueAsString():"x86-64";
     std::string features=F.hasFnAttribute("target-features")?
         F.getFnAttribute("target-features").getValueAsString().str():"";
@@ -125,9 +127,13 @@ class NativeVarargs {
     std::unique_ptr<MCSubtargetInfo> subtarget(
         target->createMCSubtargetInfo(M.getTargetTriple(),cpu,features));
     if (!subtarget) report_fatal_error("native variadic target has no feature information");
+    return subtarget;
+  }
+
+  uint64_t saveBytes(Function &F) {
     // LLVM allocates six GP slots and, when enabled, eight XMM slots. Ask
     // its feature parser so feature implications and soft-float agree too.
-    return GPSaveBytes+(subtarget->checkFeatures("+sse,-soft-float")?FPSaveBytes:0);
+    return GPSaveBytes+(nativeFeatures(F)->checkFeatures("+sse,-soft-float")?FPSaveBytes:0);
   }
 
   void registerList(IntrinsicInst *start, FunctionCallee add) {
