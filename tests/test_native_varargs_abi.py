@@ -76,7 +76,7 @@ int main(void) { return take(0, 1., 2., 3., 4., 5., 6., 7., 8., 2.0Q); }
 
 
 class VariadicABI(unittest.TestCase):
-    def check_case(self, name, source, extent, expected, flags=(), execute=True):
+    def check_case(self, name, source, extent, expected, flags=(), execute=True, direct_main=None):
         for major in (18, 23):
             with self.subTest(major=major, case=name):
                 llvm = llvm_dir(major)
@@ -85,6 +85,16 @@ class VariadicABI(unittest.TestCase):
                 run(llvm/'clang', '--target=x86_64-unknown-linux-musl', '-O0',
                     *flags, '-nostdinc', '-isystem', ROOT/f'dist/llvm{major}/musl-sysroot/include',
                     '-ffreestanding', '-fno-builtin', '-emit-llvm', '-c', src, '-o', bc)
+                if direct_main is not None:
+                    # Remove the frontend's caller-side vector alloca. A
+                    # past-argument pointer must not alias another registered
+                    # live allocation in this allocation-boundary negative.
+                    text = run(llvm/'llvm-dis', bc, '-o', '-').decode()
+                    text, count = re.subn(r'(define [^\n]*@main\(\)[^\n]*\{\n).*?\n}',
+                                          lambda m: m[1]+direct_main+'\n}', text, flags=re.S)
+                    self.assertEqual(count, 1)
+                    ir = bc.with_suffix('.ll'); ir.write_text(text)
+                    run(llvm/'llvm-as', ir, '-o', bc)
                 layout = TMP/f'layout-{major}.ll'; write_layout(layout, 0x1a000000, 1048576)
                 for script in (('native-link', 'native-check-link') if expected == OK
                                else ('native-check-link',)):
@@ -279,9 +289,14 @@ __attribute__((noinline)) static int take(int n, V v, ...) {
 }
 int main(void) {return take(0,(V){1,2,3,4,5,6,7,8},1.,1.,1.,1.,1.,1.,1.,1.);}
 """
-        self.check_case('named-avx-sse-valid', source.replace('READ', ''), 0, OK, ('-mavx',))
+        vector = '<8 x float> <'+', '.join(f'float {i}.0' for i in range(1, 9))+'>'
+        direct_main = ('%r = call i32 (i32, <8 x float>, ...) @take(i32 0, '
+                       + vector+', '+', '.join(['double 1.0']*8)+')\nret i32 %r')
+        self.check_case('named-avx-sse-valid', source.replace('READ', ''), 0, OK,
+                        ('-mavx',), direct_main=direct_main)
         self.check_case('named-avx-sse-overread', source.replace('READ',
-                        'volatile double d=va_arg(ap,double); (void)d;'), 0, FAULT7, ('-mavx',))
+                        'volatile double d=va_arg(ap,double); (void)d;'), 0, FAULT7,
+                        ('-mavx',), direct_main=direct_main)
 
     def test_legalized_vector_spills(self):
         # Each of these is widened to 128 bits by both backend versions,
