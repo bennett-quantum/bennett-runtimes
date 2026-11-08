@@ -85,23 +85,33 @@ int main(int argc, char **argv) {
   // x86-64 System V variadic storage is created by the backend, never by an
   // IR alloca: a variadic callee spills rdi..r9 and xmm0..7 into a fixed
   // 176-byte register save area (6*8 + 8*16), and remaining arguments occupy
-  // a caller-built overflow area whose extent only the caller knows. Walk
-  // the call operands in ABI order over the six GP and eight SSE registers
-  // to recover that exact extent; anything this adapter cannot classify
-  // exactly fails loud instead of registering an envelope.
-  auto stackArgBytes=[&](CallBase *CB) -> uint64_t {
-    unsigned gp=0, sse=0; uint64_t stack=0;
+  // a caller-built stack argument area whose extent only the caller knows.
+  // Walk the call operands in ABI order over the six GP and eight SSE
+  // registers to recover that exact area; anything this adapter cannot
+  // classify exactly fails loud instead of registering an envelope. The
+  // overflow pointer va_start reports already skips the named operands the
+  // caller placed on the stack, so only the variadic suffix of the area
+  // (total stack end minus named stack end) is publishable from it. Each
+  // stack operand keeps its ABI alignment inside the area: the caller
+  // realigns the stack to the widest such alignment, so offsets align up
+  // from the area base, and va_arg aligns the overflow pointer the same
+  // way before each over-aligned read.
+  auto variadicOverflowBytes=[&](CallBase *CB) -> uint64_t {
+    unsigned named=CB->getFunctionType()->getNumParams();
+    if (CB->arg_size()<named)
+      report_fatal_error("variadic call has fewer operands than named parameters");
+    unsigned gp=0, sse=0; uint64_t stack=0, namedEnd=0;
     auto memory=[&](uint64_t size,uint64_t align) {
-      if (align>16) report_fatal_error("unmaterialised over-aligned variadic stack argument");
       stack=alignTo(stack,std::max<uint64_t>(align,8))+alignTo(size,8);
     };
     for (unsigned a=0;a<CB->arg_size();++a) {
-      if (Type *T=CB->getParamByValType(a)) {
+      if (CB->paramHasAttr(a,Attribute::Nest)) {
+        // The static chain travels in r10, outside the GP va sequence.
+      } else if (Type *T=CB->getParamByValType(a)) {
         uint64_t align=CB->getParamAlign(a).value_or(DL.getABITypeAlign(T)).value();
-        memory(allocationSize(T),align); continue;
-      }
-      Type *T=CB->getArgOperand(a)->getType();
-      if (T->isIntegerTy() || T->isPointerTy()) {
+        memory(allocationSize(T),align);
+      } else if (Type *T=CB->getArgOperand(a)->getType();
+                 T->isIntegerTy() || T->isPointerTy()) {
         unsigned bits=T->isPointerTy()?64:T->getIntegerBitWidth();
         if (bits<=64) { if (gp<6) ++gp; else memory(8,8); }
         else if (bits<=128) { if (gp+2<=6) gp+=2; else memory(16,16); }
@@ -109,11 +119,12 @@ int main(int argc, char **argv) {
       } else if (T->isHalfTy() || T->isFloatTy() || T->isDoubleTy() ||
                  (T->isVectorTy() && !cast<VectorType>(T)->getElementCount().isScalable() &&
                   DL.getTypeSizeInBits(T).getFixedValue()<=128)) {
-        if (sse<8) ++sse; else memory(alignTo(sizeOf(T),8),8);
+        if (sse<8) ++sse; else memory(alignTo(sizeOf(T),8),DL.getABITypeAlign(T).value());
       } else if (T->isX86_FP80Ty() || T->isFP128Ty()) memory(16,16);
       else report_fatal_error("unmaterialised variadic argument class");
+      if (a+1==named) namedEnd=stack;
     }
-    return stack;
+    return stack-namedEnd;
   };
   for (Function &F:*M) {
     if (F.isDeclaration()) continue;
@@ -161,7 +172,7 @@ int main(int argc, char **argv) {
         if (!isa<CallInst>(I)) report_fatal_error("unmaterialised variadic invoke");
         // Publish the exact overflow extent for the callee's va_start; the
         // pop also covers callees that never call va_start.
-        B.CreateCall(vaPush,{B.getInt64(stackArgBytes(CB))});
+        B.CreateCall(vaPush,{B.getInt64(variadicOverflowBytes(CB))});
         IRBuilder<> after(I->getNextNode());
         after.CreateCall(vaPop,{});
       }
