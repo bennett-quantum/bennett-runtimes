@@ -3,6 +3,7 @@
 import os
 from pathlib import Path
 import resource
+import signal
 import subprocess
 import sys
 sys.path.insert(0,str(Path(__file__).resolve().parent))
@@ -57,3 +58,18 @@ attributes #0 = { \"target-features\"=\"+avx\" }
             result=subprocess.run([exe],capture_output=True,timeout=600,preexec_fn=stack_fixture)
             assert (result.returncode,result.stdout,result.stderr)==(0,b'',b''),(major,label,level,result)
             print(f'LLVM{major} {label} O{level}:4096 wide-vector calls return147456 with64KiB stack PASS',flush=True)
+
+    # Without AVX the backend splits this raw vector into register arguments.
+    # The C callee's attempted stack read has no incoming overflow object;
+    # a probe must not invent one by treating the vector as a stack byval.
+    register=TMP/f'register-{major}.ll'
+    register.write_text(caller.read_text().replace('+avx','+sse2,-avx').replace('4096','1').replace('147456','36'))
+    raw=TMP/f'register-closed-{major}.bc';adapted=TMP/f'register-checked-{major}.bc'
+    native=TMP/f'register-native-{major}.bc';exe=TMP/f'register-{major}'
+    run(llvm/'llvm-link',callee,register,dist/'bennett-runtimes.bc',layout,'-o',raw)
+    run(ROOT/'scripts/native-check',major,raw,adapted)
+    run(llvm/'llvm-link',adapted,'--override='+str(dist/'musl-sysroot/lib/native-support.bc'),'-o',native)
+    run(llvm/'clang','-O0','-nostdlib','-static','-no-pie','-ffreestanding','-fno-builtin','-Wl,-e,_start',native,'-o',exe)
+    result=subprocess.run([exe],capture_output=True,timeout=600,preexec_fn=stack_fixture)
+    assert (result.returncode,result.stdout,result.stderr)==(-signal.SIGILL,b'',b'bennett runtime fault 7\n'),(major,result)
+    print(f'LLVM{major}: register-split vector does not authorize missing overflow storage PASS',flush=True)
