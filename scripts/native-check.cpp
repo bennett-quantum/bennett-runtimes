@@ -140,11 +140,11 @@ int main(int argc, char **argv) {
         if (bits<=64) { if (gp<6) ++gp; else memory(8,8); }
         else if (bits<=128) { if (gp+2<=6) gp+=2; else memory(16,16); }
         else report_fatal_error("unmaterialised wide integer variadic argument");
-      } else if (T->isHalfTy() || T->isFloatTy() || T->isDoubleTy() ||
+      } else if (T->isHalfTy() || T->isBFloatTy() || T->isFloatTy() || T->isDoubleTy() || T->isFP128Ty() ||
                  (T->isVectorTy() && !cast<VectorType>(T)->getElementCount().isScalable() &&
                   DL.getTypeSizeInBits(T).getFixedValue()<=128)) {
         if (sse<8) ++sse; else memory(alignTo(sizeOf(T),8),DL.getABITypeAlign(T).value());
-      } else if (T->isX86_FP80Ty() || T->isFP128Ty()) memory(16,16);
+      } else if (T->isX86_FP80Ty()) memory(16,16);
       else report_fatal_error("unmaterialised variadic argument class");
       if (a+1==named) namedEnd=stack;
     }
