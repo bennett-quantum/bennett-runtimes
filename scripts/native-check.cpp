@@ -55,9 +55,14 @@ int main(int argc, char **argv) {
   auto *table=new GlobalVariable(*M,array,true,GlobalValue::ExternalLinkage,
                                  ConstantArray::get(array,objects),"__bennett_rt_native_objects");
   table->setAlignment(Align(8));
+  // These definitions are never preemptible in the static checked link.
+  // Without dso_local, PIE-level codegen loads their addresses through a
+  // GOT whose orphan sections shift device-visible data by O-level.
+  table->setDSOLocal(true);
   auto *count=new GlobalVariable(*M,I64,true,GlobalValue::ExternalLinkage,
                                  ConstantInt::get(I64,objects.size()),"__bennett_rt_native_object_count");
   count->setAlignment(Align(8));
+  count->setDSOLocal(true);
   auto sizeOf=[&](Type *T) -> uint64_t {
     auto S=DL.getTypeStoreSize(T);
     if (S.isScalable()) report_fatal_error("unmaterialised scalable access");
