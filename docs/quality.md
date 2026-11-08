@@ -236,12 +236,12 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "scripts/native-check.cpp": {
-      "complexity_mass": 132,
+      "complexity_mass": 199,
       "functions": 1,
       "lengths": {
         "101-300": 1
       },
-      "max_lines": 156,
+      "max_lines": 227,
       "over_100": 1,
       "over_20": 1,
       "over_300": 0,
@@ -468,10 +468,10 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "src/native/heap.c": {
-      "complexity_mass": 86,
-      "functions": 16,
+      "complexity_mass": 89,
+      "functions": 19,
       "lengths": {
-        "1-20": 13,
+        "1-20": 16,
         "21-50": 3
       },
       "max_lines": 32,
@@ -479,7 +479,7 @@ The baseline records zero tracked litter and zero production process identifiers
       "over_20": 3,
       "over_300": 0,
       "over_50": 0,
-      "trivial_wrappers": 1
+      "trivial_wrappers": 2
     },
     "src/native/layout.h": {
       "complexity_mass": 0,
