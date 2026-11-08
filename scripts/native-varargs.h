@@ -14,6 +14,11 @@
 using namespace llvm;
 
 class NativeVarargs {
+  // Dialect §14.3's x86-64 System V row; native framing uses two words for
+  // the saved frame pointer and return PC (AMD64 ABI §3.2.2/§3.5.7).
+  static constexpr uint64_t WordBytes=8, VectorSlotBytes=16;
+  static constexpr uint64_t ListBytes=3*WordBytes;
+  static constexpr uint64_t GPSaveBytes=6*WordBytes, FPSaveBytes=8*VectorSlotBytes;
   Module &M;
   Type *P, *I64;
   GlobalVariable *extent, *probeResult;
@@ -24,7 +29,7 @@ class NativeVarargs {
   // vectors use AVX registers. A byval probe parameter preserves that row.
   bool stackVector(CallInst *call, unsigned index, unsigned fixed) {
     Type *T=call->getArgOperand(index)->getType();
-    return index>=fixed && T->isVectorTy() && M.getDataLayout().getTypeAllocSize(T)>16;
+    return index>=fixed && T->isVectorTy() && M.getDataLayout().getTypeAllocSize(T).getFixedValue()>VectorSlotBytes;
   }
 
   AttributeSet returnABI(CallInst *call) {
@@ -83,12 +88,12 @@ class NativeVarargs {
   void buildProbe(Function *F) {
     IRBuilder<> B(BasicBlock::Create(M.getContext(),"entry",F));
     // SysV va_list is {u32 gp_offset,u32 fp_offset,ptr overflow,ptr save}.
-    auto *ap=B.CreateAlloca(ArrayType::get(B.getInt8Ty(),24)); ap->setAlignment(Align(8));
+    auto *ap=B.CreateAlloca(ArrayType::get(B.getInt8Ty(),ListBytes)); ap->setAlignment(Align(WordBytes));
     B.CreateCall(intrinsicDeclaration(Intrinsic::vastart),{ap});
-    auto *end=B.CreateLoad(P,B.CreateConstGEP1_64(B.getInt8Ty(),ap,8));
+    auto *end=B.CreateLoad(P,B.CreateConstGEP1_64(B.getInt8Ty(),ap,WordBytes));
     auto *frame=B.CreateCall(intrinsicDeclaration(Intrinsic::frameaddress),{B.getInt32(0)});
     // The incoming argument area follows the saved frame pointer and return PC.
-    auto *base=B.CreateAdd(B.CreatePtrToInt(frame,I64),B.getInt64(16));
+    auto *base=B.CreateAdd(B.CreatePtrToInt(frame,I64),B.getInt64(2*WordBytes));
     B.CreateStore(B.CreateSub(B.CreatePtrToInt(end,I64),base),probeResult);
     B.CreateCall(intrinsicDeclaration(Intrinsic::vaend),{ap});
     if (F->getReturnType()->isVoidTy()) B.CreateRetVoid();
@@ -122,16 +127,16 @@ class NativeVarargs {
     if (!subtarget) report_fatal_error("native variadic target has no feature information");
     // LLVM allocates six GP slots and, when enabled, eight XMM slots. Ask
     // its feature parser so feature implications and soft-float agree too.
-    return 48+(subtarget->checkFeatures("+sse,-soft-float")?128:0);
+    return GPSaveBytes+(subtarget->checkFeatures("+sse,-soft-float")?FPSaveBytes:0);
   }
 
   void registerList(IntrinsicInst *start, FunctionCallee add) {
     IRBuilder<> B(start->getNextNode());
     auto *ap=start->getArgOperand(0);
     auto field=[&](unsigned offset) { return B.CreateConstGEP1_64(B.getInt8Ty(),ap,offset); };
-    auto *save=B.CreateLoad(P,field(16));
+    auto *save=B.CreateLoad(P,field(2*WordBytes));
     B.CreateCall(add,{save,B.getInt64(saveBytes(*start->getFunction()))});
-    auto *overflow=B.CreateLoad(P,field(8));
+    auto *overflow=B.CreateLoad(P,field(WordBytes));
     auto entry=incoming.find(start->getFunction());
     if (entry==incoming.end()) report_fatal_error("va_start outside a native variadic definition");
     B.CreateCall(add,{overflow,entry->second});
@@ -172,12 +177,12 @@ public:
     }
     for (auto *call:calls) callExtent(call);
     for (auto *start:starts) {
-      IRBuilder<> B(start); B.CreateCall(check,{start->getArgOperand(0),B.getInt64(24)});
+      IRBuilder<> B(start); B.CreateCall(check,{start->getArgOperand(0),B.getInt64(ListBytes)});
       registerList(start,add);
     }
     for (auto *copy:copies) {
       IRBuilder<> B(copy);
-      for (Value *ap:copy->args()) B.CreateCall(check,{ap,B.getInt64(24)});
+      for (Value *ap:copy->args()) B.CreateCall(check,{ap,B.getInt64(ListBytes)});
     }
   }
 };
