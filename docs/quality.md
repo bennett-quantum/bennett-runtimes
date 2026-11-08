@@ -273,7 +273,7 @@ The baseline records zero tracked litter and zero production process identifiers
       "lengths": {
         "101-300": 1
       },
-      "max_lines": 156,
+      "max_lines": 157,
       "over_100": 1,
       "over_20": 1,
       "over_300": 0,
@@ -292,6 +292,17 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "scripts/native-sanitizer-link": {
+      "complexity_mass": 0,
+      "functions": 0,
+      "lengths": {},
+      "max_lines": 0,
+      "over_100": 0,
+      "over_20": 0,
+      "over_300": 0,
+      "over_50": 0,
+      "trivial_wrappers": 0
+    },
+    "scripts/native-varargs.h": {
       "complexity_mass": 0,
       "functions": 0,
       "lengths": {},

@@ -4,6 +4,7 @@
 // incoming stack extent. Subtract the named-only extent to bound overflow
 // arguments without guessing ABI classes from LLVM types.
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/MC/MCSubtargetInfo.h"
@@ -69,23 +70,27 @@ class NativeVarargs {
     return B.CreateLoad(I64,probeResult,"native.va.extent");
   }
 
-  Function *vaIntrinsic(Intrinsic::ID id) {
+  Function *intrinsicDeclaration(Intrinsic::ID id) {
     SmallVector<Type *,1> types;
     if (Intrinsic::isOverloaded(id)) types.push_back(P);
+#if LLVM_VERSION_MAJOR >= 23
+    return Intrinsic::getOrInsertDeclaration(&M,id,types);
+#else
     return Intrinsic::getDeclaration(&M,id,types);
+#endif
   }
 
   void buildProbe(Function *F) {
     IRBuilder<> B(BasicBlock::Create(M.getContext(),"entry",F));
     // SysV va_list is {u32 gp_offset,u32 fp_offset,ptr overflow,ptr save}.
     auto *ap=B.CreateAlloca(ArrayType::get(B.getInt8Ty(),24)); ap->setAlignment(Align(8));
-    B.CreateCall(vaIntrinsic(Intrinsic::vastart),{ap});
+    B.CreateCall(intrinsicDeclaration(Intrinsic::vastart),{ap});
     auto *end=B.CreateLoad(P,B.CreateConstGEP1_64(B.getInt8Ty(),ap,8));
-    auto *frame=B.CreateCall(Intrinsic::getDeclaration(&M,Intrinsic::frameaddress,{P}),{B.getInt32(0)});
+    auto *frame=B.CreateCall(intrinsicDeclaration(Intrinsic::frameaddress),{B.getInt32(0)});
     // The incoming argument area follows the saved frame pointer and return PC.
     auto *base=B.CreateAdd(B.CreatePtrToInt(frame,I64),B.getInt64(16));
     B.CreateStore(B.CreateSub(B.CreatePtrToInt(end,I64),base),probeResult);
-    B.CreateCall(vaIntrinsic(Intrinsic::vaend),{ap});
+    B.CreateCall(intrinsicDeclaration(Intrinsic::vaend),{ap});
     if (F->getReturnType()->isVoidTy()) B.CreateRetVoid();
     else B.CreateRet(Constant::getNullValue(F->getReturnType()));
   }
@@ -99,7 +104,7 @@ class NativeVarargs {
     auto *failure=SplitBlockAndInsertIfThen(invalid,call,true);
     IRBuilder<> error(failure);
     auto infrastructure=M.getOrInsertFunction("__bennett_rt_native_infrastructure",error.getVoidTy(),P);
-    error.CreateCall(infrastructure,{error.CreateGlobalStringPtr("invalid native argument extent")});
+    error.CreateCall(infrastructure,{error.CreateGlobalString("invalid native argument extent")});
     B.SetInsertPoint(call); B.CreateStore(B.CreateSub(all,named),extent);
     IRBuilder<> after(call->getNextNode()); after.CreateStore(previous,extent);
   }
@@ -135,21 +140,15 @@ class NativeVarargs {
 public:
   NativeVarargs(Module &module):M(module) {
     auto &C=M.getContext(); P=PointerType::getUnqual(C); I64=Type::getInt64Ty(C);
-    extent=new GlobalVariable(M,I64,false,GlobalValue::InternalLinkage,
-                              ConstantInt::get(I64,0),"__bennett_native_va_extent");
-    probeResult=new GlobalVariable(M,I64,false,GlobalValue::InternalLinkage,
-                                   ConstantInt::get(I64,0),"__bennett_native_va_probe_result");
   }
 
   void instrument(FunctionCallee check, FunctionCallee add) {
     SmallVector<CallInst *> calls;
+    SmallVector<Function *> variadic;
     SmallVector<IntrinsicInst *> starts, copies;
     for (Function &F:M) {
       if (F.isDeclaration()) continue;
-      if (F.isVarArg()) {
-        IRBuilder<> B(&*F.getEntryBlock().getFirstInsertionPt());
-        incoming[&F]=B.CreateLoad(I64,extent,"native.va.incoming");
-      }
+      if (F.isVarArg()) variadic.push_back(&F);
       for (Instruction &I:instructions(F)) {
         auto *call=dyn_cast<CallInst>(&I); if (!call) continue;
         auto *intrinsic=dyn_cast<IntrinsicInst>(call);
@@ -163,6 +162,14 @@ public:
     if (target.getArch()!=Triple::x86_64 || target.isOSWindows())
       report_fatal_error("native variadic storage requires the x86-64 System V ABI");
     if (InitializeNativeTarget()) report_fatal_error("cannot initialise native variadic target");
+    extent=new GlobalVariable(M,I64,false,GlobalValue::InternalLinkage,
+                              ConstantInt::get(I64,0),"__bennett_native_va_extent");
+    probeResult=new GlobalVariable(M,I64,false,GlobalValue::InternalLinkage,
+                                   ConstantInt::get(I64,0),"__bennett_native_va_probe_result");
+    for (auto *F:variadic) {
+      IRBuilder<> B(&*F->getEntryBlock().getFirstInsertionPt());
+      incoming[F]=B.CreateLoad(I64,extent,"native.va.incoming");
+    }
     for (auto *call:calls) callExtent(call);
     for (auto *start:starts) {
       IRBuilder<> B(start); B.CreateCall(check,{start->getArgOperand(0),B.getInt64(24)});
