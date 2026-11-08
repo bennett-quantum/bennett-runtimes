@@ -10,8 +10,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import unittest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import llvm_dir, run, write_layout
 
 ROOT = Path(__file__).resolve().parents[1]
