@@ -50,9 +50,11 @@ and `functionArgumentNeedsConsecutiveRegisters` in
 
 ## Complete classification at this boundary
 
-Here `slot(T)` means the target slot of the **legalized** type, whose size is
-read with this module's DataLayout and rounded up to eightbytes. Object
-allocation layout and target register assignment must remain separate phases.
+For direct scalars, read the type store size with this module's DataLayout,
+then round to the legalized target slot: eightbytes for small scalars,
+16 bytes for f80/f128. Their stack alignments are target rules, independent
+of object alignment. Object allocation layout (byval) and target register
+assignment must remain separate phases.
 
 | LLVM operand | Register / memory class | Stack fallback, both majors unless specified |
 | --- | --- | --- |
@@ -61,8 +63,8 @@ allocation layout and target register assignment must remain separate phases.
 | i128 | two INTEGER pieces | LLVM 18 split/shadow rule; LLVM 23 atomic 16 bytes, align 16 |
 | iN, N > 128 | legalization not yet classified here | deferred explicit infrastructure diagnostic; no invented extent |
 | half, bfloat, float, double | one SSE | legalized scalar slot: 8 bytes, align 8 |
-| fp128 | SSE/SSEUP, one XMM | slot(fp128), normal LP64 16 bytes, align 16 |
-| x86_fp80 | X87/X87UP, MEMORY | allocation size and ABI alignment of x86_fp80, normal LP64 16/16 |
+| fp128 | SSE/SSEUP, one XMM | 16 bytes, align 16 (legalized f128 slot) |
+| x86_fp80 | X87/X87UP, MEMORY | 16 bytes, align 16 (legalized f80 slot) |
 | `<1 x i1/i8/i16/i32>` | scalarized INTEGER | 8 bytes, align 8 |
 | `<1 x i64>` | legalized MMX, MEMORY on this target | 8 bytes, align 8 |
 | `<1 x half/bfloat>` | widened SSE vector | 16 bytes, align 16 |
@@ -102,6 +104,8 @@ For `take(i32 0, six i64 1, i65/i96 (2^64+7), i64 9)`, the files
 LLVM 18 stores at 0,16,24,32 (end 40); LLVM 23 at 0,8,16,24 (end 32).
 Without the trailing 9 the exact ends are 32 and 24. The i128a8/i128a32
 receipts confirm that changing object alignment cannot select this rule.
+`fp128-align{64,128,256}-{18,23}.s` and the analogous x86_fp80 files
+likewise show target 16-byte scalar slots regardless of object alignment.
 `i65-gp4-standard-{18,23}.s` show LLVM 18 stack-passing both pieces and the
 trailing integer, while LLVM 23 uses GP5 for the low piece and stack for the
 high piece and trailing integer. `i128-gp4-standard-{18,23}.s` distinguish
