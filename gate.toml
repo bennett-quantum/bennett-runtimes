@@ -1,7 +1,7 @@
 # Push-gate pins (bennett/tools/gate_README.md). Siblings resolve only to these commits.
 schema = 1
 repo = "bennett-runtimes"
-tool_sha = "3779522887ace6426f8ba13fb0d55b625b781941"
+tool_sha = "a630f3861426b8b08bcb0725abd2f5cd5dd70a06"
 timeout_s = 28800
 
 [env]
@@ -23,3 +23,7 @@ note = "conformance main on origin"
 [siblings."bennett-arith"]
 sha = "aab308f8305e92d4946d1ea302af1ea196a27bb3"
 note = "arith main on origin"
+
+[siblings."bennett-isa-spec"]
+sha = "618b16f805aa26244dd2cfa74938d1394a21ce57"
+note = "published ISA 0.9 K91 per-role loader capability negotiation"
