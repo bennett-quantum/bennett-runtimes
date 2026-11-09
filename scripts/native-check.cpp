@@ -2,6 +2,7 @@
 // normaliser and never writes its input or enters device identity/ISA mapping.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
+#include "llvm/Config/llvm-config.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -31,38 +32,14 @@ static uint64_t allocationSize(const DataLayout &DL,Type *T) {
 // complete argument list to account for register use and alignment, then
 // publish only stack end minus named stack end. No caller frame envelope.
 //
-// System V AMD64 ABI 1.0, 3.2.3 Classification / Passing; N-bit integers
-// and bfloat: 3.1.2. LLVM operands here are frontend ABI-lowered forms.
-// https://gitlab.com/x86-psABIs/x86-64-ABI/-/raw/master/x86-64-ABI/low-level-sys-info.tex
-// LLVM operand                    ABI / target storage        Stack fallback
-// integer <=64, pointer           INTEGER: 1 GP               8, align 8
-// integer 65..127                 INTEGER: 2 GP chunks         16, align 8
-// integer exactly 128 (__int128)  INTEGER: 2 GP                16, align 16
-// half, bfloat, float, double     SSE: 1 XMM                   round size to 8
-// fp128                          SSE,SSEUP: 1 XMM             16, align 16
-// x86_fp80                       X87,X87UP: MEMORY            16, align 16
-// <1 x i1/i8/i16/i32>             legalized INTEGER: 1 GP      8, align 8
-// <1 x i64>                      legalized MMX: MEMORY        8, align 8
-// <1 x half/bfloat>              legalized SSE: 1 XMM         16, align 16
-// <1 x float/double/fp128/fp80>   legalized scalar: as above   as above
-// power-of-two vectors <=128     SSE/SSEUP: 1 XMM             16, align 16
-//   with i1/i8/i16/i32/i64/half/bfloat/float/double elements;
-//   with at most 16 i1 lanes; small vectors widen to 128 bits before passing.
-// named vectors 256/512 bits     backend MEMORY (*)           32/64, align 32/64
-// unnamed vectors 256/512 bits   frontend byval: MEMORY       allocation, align 32/64
-// byval aggregate/vector         MEMORY (already lowered)     allocation size,
-//                                                              explicit/ABI align
-// (*) The source ABI specifies SSE/SSEUP for named AVX operands, which
-// arrive as valid direct IR vectors. Both LLVM backends nevertheless pass
-// these on the stack at variadic calls (X86CallingConv.td CC_X86_64_C), so
-// named accounting follows caller storage and consumes no SSE register.
-// Other vectors and scalars lacking an exact target mapping publish an unclassified marker;
-// diagnose only if the callee executes va_start, never at checked linking.
-// SSEUP shares the preceding SSE register. An operand that cannot fit its
-// entire register bank falls back to stack without consuming registers.
-// Stack slots round size/alignment up to at least eight bytes, preserving
-// the operand's stack alignment; named stack operands are never published.
-enum class ArgumentStorage { GP, SSE, Memory, StaticChain, Unclassified };
+// System V AMD64 ABI 3.2.3 supplies classes; the matching LLVM backend
+// supplies legalization and target slots. See docs/design/2026-11-09-native-variadic-storage.md.
+// Module DataLayout supplies store sizes and byval allocation layout, not
+// target stack alignment for legalized scalar/vector operands.
+// LLVM18 split integers reserve GP5 on spill; LLVM23 uses independent i64
+// pieces except for atomic i128. Named AVX vectors use backend memory slots
+// at vararg calls. Unknown representations are diagnosed only at va_start.
+enum class ArgumentStorage { GP, GPPieces, GPSplit, SSE, Memory, StaticChain, Unclassified };
 struct ArgumentLayout {
   ArgumentStorage storage;
   unsigned registers;
@@ -71,8 +48,31 @@ struct ArgumentLayout {
 // System V AMD64 ABI 3.2.3 register banks and minimum stack slot.
 static constexpr unsigned GPRegisters=6, SSERegisters=8;
 static constexpr uint64_t StackSlot=8;
+// X86 CC_X86_64_C: split integer and full SIMD/x87 stack alignment.
+static constexpr uint64_t WideStackSlot=16;
 // Unknown layout is diagnosed at va_start, never registered as an extent.
 static constexpr uint64_t UnclassifiedExtent=UINT64_MAX;
+
+static ArgumentLayout classifyInteger(Type *T,const DataLayout &DL) {
+  uint64_t bits=DL.getTypeSizeInBits(T).getFixedValue();
+  if (bits<=64) return {ArgumentStorage::GP,1,StackSlot,StackSlot};
+  if (bits>128) return {ArgumentStorage::Unclassified,0,0,1};
+  uint64_t bytes=alignTo(sizeOf(DL,T),StackSlot);
+#if LLVM_VERSION_MAJOR == 18
+  return {ArgumentStorage::GPSplit,2,bytes,WideStackSlot};
+#elif LLVM_VERSION_MAJOR == 23
+  if (bits==128) return {ArgumentStorage::GP,2,bytes,WideStackSlot};
+  return {ArgumentStorage::GPPieces,2,bytes,StackSlot};
+#else
+#error Native variadic storage requires a verified LLVM calling convention
+#endif
+}
+
+static ArgumentLayout classifyFloat(Type *T,const DataLayout &DL) {
+  uint64_t alignment=(T->isFP128Ty() || T->isX86_FP80Ty())?WideStackSlot:StackSlot;
+  auto storage=T->isX86_FP80Ty()?ArgumentStorage::Memory:ArgumentStorage::SSE;
+  return {storage,storage==ArgumentStorage::SSE?1U:0U,alignTo(sizeOf(DL,T),alignment),alignment};
+}
 
 static ArgumentLayout classifyVector(FixedVectorType *T,bool named,const DataLayout &DL) {
   Type *element=T->getElementType();
@@ -82,11 +82,11 @@ static ArgumentLayout classifyVector(FixedVectorType *T,bool named,const DataLay
     if (element->isIntegerTy(64)) return {ArgumentStorage::Memory,0,8,8};
     if (element->isIntegerTy() && element->getIntegerBitWidth()<=32)
       return {ArgumentStorage::GP,1,8,8};
-    if (element->isX86_FP80Ty()) return {ArgumentStorage::Memory,0,16,16};
+    if (element->isX86_FP80Ty()) return classifyFloat(element,DL);
     if (element->isHalfTy() || element->isBFloatTy())
       return {ArgumentStorage::SSE,1,16,16}; // legalized to a full XMM vector
     if (element->isFloatTy() || element->isDoubleTy() || element->isFP128Ty())
-      return {ArgumentStorage::SSE,1,alignTo(sizeOf(DL,element),StackSlot),DL.getABITypeAlign(element).value()};
+      return classifyFloat(element,DL);
     return {ArgumentStorage::Unclassified,0,0,1};
   }
   // Other representations may scalarize/split during target legalization.
@@ -117,19 +117,14 @@ static ArgumentLayout classifyArgument(CallBase *CB,unsigned index,const DataLay
   switch (T->getTypeID()) {
   case Type::PointerTyID:
     return {ArgumentStorage::GP,1,8,8};
-  case Type::IntegerTyID: {
-    unsigned bits=T->getIntegerBitWidth();
-    if (bits<=64) return {ArgumentStorage::GP,1,8,8};
-    if (bits<=128) return {ArgumentStorage::GP,2,16,bits==128?16U:8U};
-    return {ArgumentStorage::Unclassified,0,0,1};
-  }
+  case Type::IntegerTyID:
+    return classifyInteger(T,DL);
   case Type::FixedVectorTyID:
     return classifyVector(cast<FixedVectorType>(T),index<CB->getFunctionType()->getNumParams(),DL);
   case Type::HalfTyID: case Type::BFloatTyID:
   case Type::FloatTyID: case Type::DoubleTyID: case Type::FP128TyID:
-    return {ArgumentStorage::SSE,1,alignTo(sizeOf(DL,T),StackSlot),DL.getABITypeAlign(T).value()};
   case Type::X86_FP80TyID:
-    return {ArgumentStorage::Memory,0,16,16};
+    return classifyFloat(T,DL);
   default:
     return {ArgumentStorage::Unclassified,0,0,1};
   }
@@ -143,8 +138,17 @@ static void placeArgument(ArgumentArea &area,const ArgumentLayout &argument) {
   switch (argument.storage) {
   case ArgumentStorage::StaticChain: return;
   case ArgumentStorage::Unclassified: llvm_unreachable("unclassified argument reached layout");
+  case ArgumentStorage::GPPieces: {
+    unsigned inRegisters=std::min(argument.registers,GPRegisters-area.gp);
+    area.gp+=inRegisters;
+    area.stack+=(argument.registers-inRegisters)*StackSlot;
+    return;
+  }
   case ArgumentStorage::GP:
+  case ArgumentStorage::GPSplit:
     if (area.gp+argument.registers<=GPRegisters) { area.gp+=argument.registers; return; }
+    // LLVM18's first split piece shadows R9 when it falls back to memory.
+    if (argument.storage==ArgumentStorage::GPSplit) area.gp=GPRegisters;
     break;
   case ArgumentStorage::SSE:
     if (area.sse+argument.registers<=SSERegisters) { area.sse+=argument.registers; return; }
