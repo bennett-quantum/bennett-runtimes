@@ -47,6 +47,19 @@ no coverage threshold.
 
 ## Test oracles and bounds
 
+`test_native.py` checks the native-comparison layout's LP64 size (24), alignment
+(8) and field offsets (0/8/16), and verifies that the native startup/support and
+runtime publications export no launch/sched provider symbols. Statically requiring
+either K91 query or its role's additive entry points fails explicitly at link
+time, naming the missing symbol (ISA 0.9 §10.1, §15 G/H group 3). These are
+negative compatibility checks, not a token-alias support claim. The pinned
+618b16f clause assigns negotiation to the driver's real per-root shim; this
+runtime currently has only host-process startup and a native-comparison heap
+layout. Root/object/closure, live-token identity/lifetime and provider/reader
+transport across a mixed launch remain blocked under brt-1rb / bennett-4ht;
+the query contract does not publish that mixed-container ABI. No native layout
+revision or ISA header substitutes for `token_aliases/1` negotiation.
+
 `test_host_libc.py` builds the same C program against host glibc and the runtime's
 musl publication, then compares exit status, stdout and stderr exactly. It covers
 nine allocator size boundaries, calloc zero fill, alignment and realloc's live
