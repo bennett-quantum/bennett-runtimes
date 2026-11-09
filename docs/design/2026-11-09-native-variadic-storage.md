@@ -21,6 +21,17 @@ DataLayout tail padding. Use `getTypeAllocSize(byvalType)` and the call's
 explicit parameter alignment (or `getABITypeAlign(byvalType)` when absent).
 Round stack slots and their alignments to at least eight bytes.
 
+Native exactness requires the module DataLayout to be compatible with the
+selected code generator, as required by the
+[LLVM Language Reference](https://llvm.org/docs/LangRef.html#data-layout).
+LLVM's code generator supplies its own target layout; synthetic object
+layouts such as AMD64 `i64:32` or `i64:128` do not establish native byval
+storage. Tests with those inputs exercise DataLayout arithmetic only.
+Compatible-layout native controls must also check caller assembly and values
+at the real boundary; this precondition does not reject any valid target
+program. For compatible AMD64 `{i8,i64,i8}`, field offsets are 0/8/16 and
+allocation size is 24, including tail padding.
+
 **DataLayout alone is insufficient to infer calling-convention alignment.**
 For example, changing `i128:128` to `i128:64` or `i128:256` does not change either
 backend's direct i65 stack layout. The target calling convention overrides
@@ -70,7 +81,7 @@ assignment must remain separate phases.
 | `<1 x half/bfloat>` | widened SSE vector | 16 bytes, align 16 |
 | `<1 x float/double/fp128/x86_fp80>` | scalarized as its element | same as the scalar row |
 | power-of-two vectors <=128 bits, canonical integer/FP elements | one SSE/SSEUP | widened 128-bit vector: 16 bytes, align 16 |
-| named direct 256/512-bit canonical vectors | backend MEMORY at variadic calls | legalized 32/64 bytes, align 32/64 |
+| named direct 256/512-bit canonical vectors | caller-feature-dependent legalization below | one stack slot per spilled legalized piece |
 | unnamed wide vectors | frontend byval MEMORY | DataLayout allocation size, explicit/ABI alignment |
 | any byval object | MEMORY, never a GP pointer | DataLayout allocation size, explicit/ABI alignment |
 | `nest` | static-chain register R10 | no GP/SSE/stack consumption |
@@ -79,9 +90,23 @@ assignment must remain separate phases.
 Canonical vector elements are i1/i8/i16/i32/i64, half, bfloat, float, double;
 i1 vectors have at most 16 lanes here. A single integer element is accepted
 only through i32 or exactly i64. Named 256/512-bit vectors require non-i1
-canonical elements and power-of-two lanes. Their backend stack placement
-at variadic calls differs from source-ABI named AVX SSE/SSEUP classification;
-it consumes no XMM register. All other unclassified operands retain the
+canonical elements and power-of-two lanes. Their placement depends on the
+**caller's** target CPU and feature attributes, not the callee's attributes or
+the machine running the adapter. Construct a major-matched target machine
+for the module triple and query its caller-specific `TargetLowering`:
+`getRegisterTypeForCallingConv` and `getNumRegistersForCallingConv` determine
+the type and number of legalized pieces. CPU defaults, feature implications
+and explicit feature disables are resolved by LLVM itself.
+
+A legalized 128-bit piece consumes one XMM register if available, otherwise
+one 16-byte-aligned stack slot. Assign pieces independently, so a vector may
+use both XMM registers and stack when the bank is partly full. Legalized
+256/512-bit pieces instead use memory slots of 32/64 bytes with matching
+alignment at variadic calls. Thus default AMD64 splits a named 256/512-bit
+float vector into two/four XMM pieces; with AVX it uses one/two 256-bit memory
+pieces; with AVX512 the 512-bit operand uses one 512-bit memory piece. These
+are representation rules after source-ABI classification. All other
+unclassified operands retain the
 existing deferred diagnostic: ignored calls still link and run, and executing
 `va_start` reports that no reliable extent can be registered. Direct iN >128
 and other deferred representations remain a coverage limit, not an empty
@@ -120,3 +145,16 @@ module layout independence of target slots, byval tail padding/alignment,
 and exact end/first byte past end. Valid controls must compare values with
 plain native execution; out-of-bounds controls must fault 7 checked. No test
 may derive its expected extent from the adapter's output.
+
+Named-vector caller receipts from the copied independent execution probe are
+in `.tmp/pa-reland-spec/tmp/named-vector-independent/`; committed controls are
+`tests/test_native_named_vector.py`. With eight variadic doubles and the
+six-i64-plus-final9 tail, default 256/512-bit calls have suffix ends 32/48
+and final9 offsets 24/40; enabled-wide calls have end16 and final9 at8.
+Partial XMM exhaustion and caller CPU/feature overrides must preserve the
+same value checks and first-past-end faults. AVX512 execution requires host
+support; assembly, link and extent checks are required even without it.
+`test_synthetic_byval_datalayout_unit` is explicitly an arithmetic unit;
+`test_native_byval_values_and_boundary` verifies compatible-layout byval
+values, exact first-past-end faults and caller assembly for explicit/default
+alignments1/8/16/32/64 on both majors.

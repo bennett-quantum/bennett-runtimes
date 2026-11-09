@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Caller-storage boundaries for the supported AMD64 LLVM representations."""
+"""Native caller boundaries plus separately labelled synthetic DataLayout units."""
 import os
 from pathlib import Path
 import re
@@ -131,7 +131,9 @@ class VariadicLayout(unittest.TestCase):
                     layout += ''.join(f'-{ty}:{alignment}' for ty in ('f16', 'f32', 'f64', 'f128'))
                     self.check_extents(major, f'float-align{alignment}', calls, ends, layout)
 
-    def test_byval_uses_module_allocation_layout(self):
+    def test_synthetic_byval_datalayout_unit(self):
+        # These synthetic layouts check DataLayout arithmetic only. LLVM codegen
+        # replaces them with its target layout, so they are not native evidence.
         for major in (18, 23):
             for i64_alignment, size in ((64, 24), (32, 16)):
                 for alignment, start in ((8, 8), (32, 32)):
@@ -141,6 +143,56 @@ class VariadicLayout(unittest.TestCase):
                                            LAYOUT.replace('i64:64', f'i64:{i64_alignment}'),
                                            '@object = global {i8, i64, i8} zeroinitializer\n')
 
+
+    def test_native_byval_values_and_boundary(self):
+        for major in (18, 23):
+            for alignment, start in ((None, 8), (1, 8), (8, 8), (16, 16), (32, 32), (64, 64)):
+                for past in (False, True):
+                    with self.subTest(major=major, alignment=alignment, past=past):
+                        name = f'native-byval-{alignment}-{past}-{major}'
+                        ir = TMP/f'{name}.ll'
+                        # Compatible AMD64 layout: field offsets0/8/16,
+                        # allocation24, one preceding GP spill and final marker.
+                        end = start+24+8
+                        attr = f'align {alignment} ' if alignment else ''
+                        ir.write_text(f'target datalayout = "{LAYOUT}"\n'
+                                      'target triple = "x86_64-unknown-linux-musl"\n'
+                                      '@object = global {i8,i64,i8} {i8 3,i64 7,i8 4}, align 16\n'
+                                      'declare void @llvm.va_start(ptr)\n'
+                                      'define i32 @take(i32 %n,...) noinline {\n'
+                                      '%ap = alloca [24 x i8], align 16\n'
+                                      'call void @llvm.va_start(ptr %ap)\n'
+                                      '%pp = getelementptr i8,ptr %ap,i64 8\n'
+                                      '%p = load ptr,ptr %pp,align 8\n'
+                                      f'%body = getelementptr i8,ptr %p,i64 {start+8}\n'
+                                      '%value = load volatile i64,ptr %body,align 8\n'
+                                      f'%tail = getelementptr i8,ptr %p,i64 {end-8}\n'
+                                      '%marker = load volatile i64,ptr %tail,align 8\n'
+                                      + (f'%past = getelementptr i8,ptr %p,i64 {end}\n'
+                                         '%unused = load volatile i8,ptr %past,align 1\n' if past else '')
+                                      + '%c1 = icmp eq i64 %value,7\n%c2 = icmp eq i64 %marker,9\n'
+                                      '%ok = and i1 %c1,%c2\n%bad = xor i1 %ok,true\n'
+                                      '%r = zext i1 %bad to i32\nret i32 %r\n}\n'
+                                      'define i32 @main() {\n'
+                                      '%r = call i32 (i32,...) @take(i32 0,'
+                                      + ','.join(['i64 1']*6+[f'ptr byval({{i8,i64,i8}}) {attr}@object','i64 9'])
+                                      + ')\nret i32 %r\n}\n')
+                        asm = run(llvm_dir(major)/'llc','-O0',ir,'-o','-').decode()
+                        ir.with_suffix('.s').write_text(asm)
+                        # Distinct final9 is a separate independent assembly oracle.
+                        marker = re.findall(r'movq\s+\$9, (?:(\d+))?\(%(?:rsp|rax)\)',asm)
+                        self.assertEqual(marker,[str(end-8)])
+                        layout = TMP/f'layout-{major}.ll'
+                        write_layout(layout,0x1a000000,1048576)
+                        for script in (('native-check-link',) if past else ('native-link','native-check-link')):
+                            exe = TMP/f'{name}-{script}'
+                            run(ROOT/'scripts'/script,major,ir,exe,layout)
+                            result = subprocess.run([exe],capture_output=True,timeout=RUN_HANG_GUARD_S)
+                            self.assertEqual((result.returncode,result.stdout,result.stderr),FAULT7 if past else OK)
+                        checked = ir.with_suffix('.bc')
+                        run(ROOT/'scripts/native-check',major,ir,checked)
+                        text = run(llvm_dir(major)/'llvm-dis',checked,'-o','-').decode()
+                        self.assertEqual(re.findall(r'__bennett_rt_native_va_push\(i64 (\d+)\)',text),[str(end)])
 
 if __name__ == '__main__':
     unittest.main()
