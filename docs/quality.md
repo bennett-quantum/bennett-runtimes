@@ -236,10 +236,10 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "scripts/native-check.cpp": {
-      "complexity_mass": 178,
-      "functions": 17,
+      "complexity_mass": 197,
+      "functions": 19,
       "lengths": {
-        "1-20": 9,
+        "1-20": 11,
         "21-50": 7,
         "51-100": 1
       },

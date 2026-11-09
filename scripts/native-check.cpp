@@ -3,6 +3,11 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
 #include "llvm/Config/llvm-config.h"
+#include "llvm/CodeGen/TargetLowering.h"
+#include "llvm/CodeGen/TargetSubtargetInfo.h"
+#include "llvm/MC/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstIterator.h"
@@ -37,9 +42,9 @@ static uint64_t allocationSize(const DataLayout &DL,Type *T) {
 // Module DataLayout supplies store sizes and byval allocation layout, not
 // target stack alignment for legalized scalar/vector operands.
 // LLVM18 split integers reserve GP5 on spill; LLVM23 uses independent i64
-// pieces except for atomic i128. Named AVX vectors use backend memory slots
-// at vararg calls. Unknown representations are diagnosed only at va_start.
-enum class ArgumentStorage { GP, GPPieces, GPSplit, SSE, Memory, StaticChain, Unclassified };
+// pieces except for atomic i128. Named vectors follow caller legalization
+// into XMM pieces or wide memory slots at vararg calls. Unknown representations are diagnosed only at va_start.
+enum class ArgumentStorage { GP, GPPieces, GPSplit, SSE, SSEPieces, Memory, StaticChain, Unclassified };
 struct ArgumentLayout {
   ArgumentStorage storage;
   unsigned registers;
@@ -52,6 +57,42 @@ static constexpr uint64_t StackSlot=8;
 static constexpr uint64_t WideStackSlot=16;
 // Unknown layout is diagnosed at va_start, never registered as an extent.
 static constexpr uint64_t UnclassifiedExtent=UINT64_MAX;
+
+static std::unique_ptr<TargetMachine> nativeTarget(Module &M) {
+  if (InitializeNativeTarget()) report_fatal_error("cannot initialize native target");
+  Triple triple(M.getTargetTriple());
+  std::string error;
+  const Target *target=TargetRegistry::lookupTarget("",triple,error);
+  if (!target) report_fatal_error(Twine("native target lookup failed: ")+error);
+#if LLVM_VERSION_MAJOR == 18
+  auto *machine=target->createTargetMachine(triple.str(),"generic","",TargetOptions(),std::nullopt);
+#else
+  auto *machine=target->createTargetMachine(triple,"generic","",TargetOptions(),std::nullopt);
+#endif
+  if (!machine) report_fatal_error("cannot construct native target machine");
+  return std::unique_ptr<TargetMachine>(machine);
+}
+
+static ArgumentLayout classifyNamedWideVector(FixedVectorType *T,CallBase *CB,std::unique_ptr<TargetMachine> &target) {
+  // Only wide-vector legalization needs a target machine. Other inputs
+  // retain their existing acceptance even when no triple was materialised.
+  if (!target) target=nativeTarget(*CB->getModule());
+  // Subtarget resolution honors caller CPU defaults and feature overrides.
+  const auto *lowering=target->getSubtargetImpl(*CB->getFunction())->getTargetLowering();
+  auto &context=T->getContext();
+  auto type=EVT::getEVT(T);
+  auto piece=lowering->getRegisterTypeForCallingConv(context,CB->getCallingConv(),type);
+  unsigned count=lowering->getNumRegistersForCallingConv(context,CB->getCallingConv(),type);
+  if (!piece.isVector() || !count) return {ArgumentStorage::Unclassified,0,0,1};
+  switch (piece.getSizeInBits().getFixedValue()) {
+  case 128: return {ArgumentStorage::SSEPieces,count,WideStackSlot,WideStackSlot};
+  case 256: case 512: {
+    uint64_t bytes=piece.getSizeInBits().getFixedValue()/8;
+    return {ArgumentStorage::Memory,0,count*bytes,bytes};
+  }
+  default: return {ArgumentStorage::Unclassified,0,0,1};
+  }
+}
 
 static ArgumentLayout classifyInteger(Type *T,const DataLayout &DL) {
   uint64_t bits=DL.getTypeSizeInBits(T).getFixedValue();
@@ -74,7 +115,7 @@ static ArgumentLayout classifyFloat(Type *T,const DataLayout &DL) {
   return {storage,storage==ArgumentStorage::SSE?1U:0U,alignTo(sizeOf(DL,T),alignment),alignment};
 }
 
-static ArgumentLayout classifyVector(FixedVectorType *T,bool named,const DataLayout &DL) {
+static ArgumentLayout classifyVector(FixedVectorType *T,bool named,const DataLayout &DL,CallBase *CB,std::unique_ptr<TargetMachine> &target) {
   Type *element=T->getElementType();
   unsigned count=T->getNumElements();
   uint64_t bits=DL.getTypeSizeInBits(T).getFixedValue();
@@ -95,19 +136,18 @@ static ArgumentLayout classifyVector(FixedVectorType *T,bool named,const DataLay
                       element->isIntegerTy(16) || element->isIntegerTy(32) || element->isIntegerTy(64);
   bool sseElement=integerElement || element->isHalfTy() || element->isBFloatTy() ||
                   element->isFloatTy() || element->isDoubleTy();
-  // These backends stack-pass direct named wide vectors in vararg calls.
-  // This differs from the source ABI's named SSE/SSEUP rule; the operand is
-  // already lowered, so account for the actual caller storage.
+  // Wide source operands may legalize into multiple XMM pieces, or into
+  // wider pieces which the backend stack-passes at variadic calls.
   if (named && isPowerOf2_32(count) && sseElement && !element->isIntegerTy(1) &&
       (bits==256 || bits==512))
-    return {ArgumentStorage::Memory,0,bits/8,bits/8};
+    return classifyNamedWideVector(T,CB,target);
   if (!isPowerOf2_32(count) || bits>128 || !sseElement || (element->isIntegerTy(1) && count>16))
     return {ArgumentStorage::Unclassified,0,0,1};
   // Small multi-lane vectors widen to 128 bits before ABI assignment.
   return {ArgumentStorage::SSE,1,16,16};
 }
 
-static ArgumentLayout classifyArgument(CallBase *CB,unsigned index,const DataLayout &DL) {
+static ArgumentLayout classifyArgument(CallBase *CB,unsigned index,const DataLayout &DL,std::unique_ptr<TargetMachine> &target) {
   if (CB->paramHasAttr(index,Attribute::Nest))
     return {ArgumentStorage::StaticChain,0,0,1}; // r10, outside the GP sequence
   if (Type *T=CB->getParamByValType(index))
@@ -120,7 +160,7 @@ static ArgumentLayout classifyArgument(CallBase *CB,unsigned index,const DataLay
   case Type::IntegerTyID:
     return classifyInteger(T,DL);
   case Type::FixedVectorTyID:
-    return classifyVector(cast<FixedVectorType>(T),index<CB->getFunctionType()->getNumParams(),DL);
+    return classifyVector(cast<FixedVectorType>(T),index<CB->getFunctionType()->getNumParams(),DL,CB,target);
   case Type::HalfTyID: case Type::BFloatTyID:
   case Type::FloatTyID: case Type::DoubleTyID: case Type::FP128TyID:
   case Type::X86_FP80TyID:
@@ -150,6 +190,13 @@ static void placeArgument(ArgumentArea &area,const ArgumentLayout &argument) {
     // LLVM18's first split piece shadows R9 when it falls back to memory.
     if (argument.storage==ArgumentStorage::GPSplit) area.gp=GPRegisters;
     break;
+  case ArgumentStorage::SSEPieces: {
+    unsigned inRegisters=std::min(argument.registers,SSERegisters-area.sse);
+    area.sse+=inRegisters;
+    if (inRegisters<argument.registers)
+      area.stack=alignTo(area.stack,argument.alignment)+(argument.registers-inRegisters)*argument.bytes;
+    return;
+  }
   case ArgumentStorage::SSE:
     if (area.sse+argument.registers<=SSERegisters) { area.sse+=argument.registers; return; }
     break;
@@ -158,14 +205,14 @@ static void placeArgument(ArgumentArea &area,const ArgumentLayout &argument) {
   area.stack=alignTo(area.stack,std::max(argument.alignment,StackSlot))+alignTo(argument.bytes,StackSlot);
 }
 
-static uint64_t variadicOverflowBytes(CallBase *CB,const DataLayout &DL) {
+static uint64_t variadicOverflowBytes(CallBase *CB,const DataLayout &DL,std::unique_ptr<TargetMachine> &target) {
   unsigned named=CB->getFunctionType()->getNumParams();
   if (CB->arg_size()<named)
     report_fatal_error("variadic call has fewer operands than named parameters");
   ArgumentArea area;
   uint64_t namedEnd=0;
   for (unsigned index=0;index<CB->arg_size();++index) {
-    auto argument=classifyArgument(CB,index,DL);
+    auto argument=classifyArgument(CB,index,DL,target);
     if (argument.storage==ArgumentStorage::Unclassified) return UnclassifiedExtent;
     placeArgument(area,argument);
     if (index+1==named) namedEnd=area.stack;
@@ -175,6 +222,7 @@ static uint64_t variadicOverflowBytes(CallBase *CB,const DataLayout &DL) {
 
 struct NativeChecks {
   Module &M;
+  std::unique_ptr<TargetMachine> target;
   FunctionCallee check,fault,enter,add,leave,vaPush,vaPop,vaOverflow;
 };
 static NativeChecks declareChecks(Module &M) {
@@ -190,7 +238,7 @@ static NativeChecks declareChecks(Module &M) {
   auto vaPush=M.getOrInsertFunction("__bennett_rt_native_va_push",V,I64);
   auto vaPop=M.getOrInsertFunction("__bennett_rt_native_va_pop",V);
   auto vaOverflow=M.getOrInsertFunction("__bennett_rt_native_va_overflow_size",I64);
-  return {M,check,fault,enter,add,leave,vaPush,vaPop,vaOverflow};
+  return {M,nullptr,check,fault,enter,add,leave,vaPush,vaPop,vaOverflow};
 }
 static void range(NativeChecks &checks,Instruction *I,Value *address,Value *size) {
   IRBuilder<> B(I);
@@ -257,7 +305,7 @@ static void instrumentVarargs(NativeChecks &checks,Instruction *I) {
     if (!isa<CallInst>(I)) report_fatal_error("unmaterialised variadic invoke");
     // Publish the exact overflow extent for the callee's va_start; the
     // pop also covers callees that never call va_start.
-    B.CreateCall(checks.vaPush,{B.getInt64(variadicOverflowBytes(CB,DL))});
+    B.CreateCall(checks.vaPush,{B.getInt64(variadicOverflowBytes(CB,DL,checks.target))});
     IRBuilder<> after(I->getNextNode());
     after.CreateCall(checks.vaPop,{});
   }

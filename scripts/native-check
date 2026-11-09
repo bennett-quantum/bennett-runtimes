@@ -18,7 +18,7 @@ source=root/'scripts/native-check.cpp'
 scratch=Path(os.environ.get('TMPDIR',root/'.tmp'))/'native-check'
 scratch.mkdir(parents=True,exist_ok=True)
 flags=shlex.split(subprocess.check_output([llvm/'llvm-config','--cxxflags','--ldflags',
-                 '--libs','core','irreader','bitwriter','transformutils'],text=True))
+                 '--libs','core','irreader','bitwriter','transformutils','nativecodegen'],text=True))
 digest=hashlib.sha256(source.read_bytes()+str(flags).encode()).hexdigest()
 exe=scratch/f'check-{sys.argv[1]}-{digest}'
 if not exe.exists():
