@@ -13,7 +13,12 @@ BENNETT_CONFORMANCE_ROOT = "{sibling:bennett-conformance}"
 BENNETT_ARITH_ROOT = "{sibling:bennett-arith}"
 
 [[check]]
+name = "runtimes fast suite"
+argv = ["scripts/gate", "--fast"]
+
+[[check]]
 name = "runtimes gate"
+tier = "post-merge"  # heavy: runs on main-health's cadence, not per push
 argv = ["scripts/gate", "--all"]
 
 [[check]]
