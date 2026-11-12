@@ -10,7 +10,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import run, llvm_dir, pinned_sibling
 ROOT=Path(__file__).resolve().parents[1]
-TMP=ROOT/'.tmp/native-tests'; TMP.mkdir(parents=True,exist_ok=True)
+TMP=Path(os.environ['TMPDIR'])/'native-tests'; TMP.mkdir(parents=True,exist_ok=True)
 CORPUS=pinned_sibling('bennett-conformance')/'ladder'
 ARITH=pinned_sibling('bennett-arith')
 resource.setrlimit(resource.RLIMIT_CORE,(0,0))
@@ -25,6 +25,59 @@ for m in (18,23):
     assert set(manifest['undefined_imports']) <= {'main','__bennett_rt_native_layout','__fini_array_start','__fini_array_end',
                                                '__bennett_rt_native_objects','__bennett_rt_native_object_count'}
     assert '__bennett_rt_native_layout' in manifest['undefined_imports'], 'layout must never default'
+    # ISA 0.9 §10.1 K91: native layout v1 is not a launch/sched provider.
+    # These comparison/startup objects must not accidentally claim a base ABI
+    # whose program/request/estimate mechanics they do not implement.
+    role_symbols = {
+        'bennett_launch_features', 'bennett_sched_features',
+        'bennett_estimate_run_with_token_aliases',
+        'bennett_sched_request_set_token_aliases', 'bennett_sched_schedule',
+    }
+    for artifact in (native, dist/'bennett-runtimes.bc',
+                     dist/'musl-sysroot/lib/native-support.bc', dist/'musl-sysroot/lib/start.bc'):
+        exports = {line.split()[-1] for line in
+                   run(llvm/'llvm-nm', '--defined-only', '--extern-only', artifact).decode().splitlines()
+                   if line.split()}
+        assert not exports & role_symbols, (m, artifact, exports & role_symbols)
+    # Preserve the private three-u64 LP64 comparison layout, independently of
+    # the ISA feature manifest. K91 publishes no replacement native layout.
+    layout_probe = TMP/f'layout-abi-{m}.c'
+    layout_probe.write_text('''#include <stddef.h>
+#include "layout.h"
+_Static_assert(sizeof(struct bennett_native_layout)==24, "layout size");
+_Static_assert(_Alignof(struct bennett_native_layout)==8, "layout alignment");
+_Static_assert(offsetof(struct bennett_native_layout,abi_version)==0, "version offset");
+_Static_assert(offsetof(struct bennett_native_layout,heap_base)==8, "base offset");
+_Static_assert(offsetof(struct bennett_native_layout,heap_limit_max)==16, "limit offset");
+''')
+    run(llvm/'clang', '--target=x86_64-unknown-linux-musl', '-nostdinc',
+        '-isystem', dist/'musl-sysroot/include', '-I', ROOT/'src/native',
+        '-std=c11', '-fsyntax-only', layout_probe)
+    # §10.1 and §15 G/H group 3: requiring absent symbols statically fails
+    # explicitly. No fake query, unavailable-estimate stub or legacy retry.
+    signatures = {
+        'bennett_launch_features': ('const unsigned char **, unsigned long *', '&bytes,&len'),
+        'bennett_sched_features': ('const unsigned char **, unsigned long *', '&bytes,&len'),
+        'bennett_estimate_run_with_token_aliases':
+            ('void *,const char *,unsigned long,const char *,unsigned int,const unsigned char *,unsigned long,const unsigned char *,unsigned long,void **',
+             '0,"root",0,"ref",0,0,0,aliases,5,&out'),
+        'bennett_sched_request_set_token_aliases': ('void *,const unsigned char *,unsigned long', '0,aliases,5'),
+        'bennett_sched_schedule': ('const void *,void **', '0,&out'),
+    }
+    for symbol, (parameters, arguments) in signatures.items():
+        probe = TMP/f'provider-probe-{m}.c'
+        probe.write_text(f'extern int {symbol}({parameters});\n'
+                         'int main(void) { const unsigned char *bytes=0; unsigned long len=0; '
+                         'void *out=0; const unsigned char aliases[]="[0,1]"; '
+                         f'return {symbol}({arguments}); }}\n')
+        result = subprocess.run([llvm/'clang', '--target=x86_64-unknown-linux-musl',
+                                 '-nostdlib', '-static', '-no-pie', '-Wl,-e,main',
+                                 probe, native, '-o', TMP/f'provider-probe-{m}'],
+                                capture_output=True)
+        missing = [line for line in result.stderr.splitlines()
+                   if b'undefined reference to' in line or b'undefined symbol:' in line]
+        assert result.returncode and any(symbol.encode() in line for line in missing), (m, symbol, result)
+    print(f'LLVM {m}: native layout preserved; no false K91 provider exports; required provider symbols fail static link PASS', flush=True)
     ir=run(llvm/'llvm-dis',native,'-o','-').decode()
     assert 'define' in ir and '__bennett_effect_' not in ir, 'native must not define or import markers'
     flags=['--target=x86_64-unknown-linux-musl','-nostdinc','-isystem',dist/'musl-sysroot/include','-O2','-ffreestanding','-fno-builtin','-fno-pie']

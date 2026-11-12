@@ -164,6 +164,24 @@ void __bennett_rt_native_stack_leave(void *mark) {
             __bennett_rt_native_infrastructure("checked object unmapping");
     }
 }
+/* Exact overflow extents for variadic calls, published by each checked
+ * caller and consumed by the callee's va_start registration. The stack
+ * discipline follows the call stack; the caller pops after return, which
+ * also covers callees that never call va_start. */
+static struct object *va_pending;
+void __bennett_rt_native_va_push(uint64_t n) { va_pending=object(0,n,va_pending); }
+void __bennett_rt_native_va_pop(void) {
+    if (!va_pending) __bennett_rt_native_infrastructure("unbalanced variadic call");
+    struct object *r=va_pending; va_pending=r->next;
+    if (__bennett_rt_native_os(11,(long)r,4096,0,0,0,0))
+        __bennett_rt_native_infrastructure("checked object unmapping");
+}
+uint64_t __bennett_rt_native_va_overflow_size(void) {
+    /* A variadic callee entered from outside the checked module has no
+     * published extent: zero registers nothing, so its overflow reads
+     * fault 7 loud instead of silently passing. */
+    return va_pending?va_pending->size:0;
+}
 void __bennett_rt_native_inputs(int argc,char **argv,char **envp) {
     if (!__bennett_rt_native_objects) return; /* plain native convenience link */
     inputs=object(argv,((uint64_t)argc+1)*sizeof(*argv),inputs);

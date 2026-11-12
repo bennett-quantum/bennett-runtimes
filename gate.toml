@@ -1,15 +1,24 @@
 # Push-gate pins (bennett/tools/gate_README.md). Siblings resolve only to these commits.
 schema = 1
 repo = "bennett-runtimes"
-tool_sha = "01c0314c9aaa4a37313ab530da2134efafe9cbd5"
+tool_sha = "822aaeffab369114e1a719a7b887a0192b22d386"
 timeout_s = 28800
+
+# Paths no check reads; changing only these reuses a PASS receipt (bennett/tools/gate_README.md).
+[receipt]
+non_product = [".beads/", "worklog/", "CLAUDE.md"]
 
 [env]
 BENNETT_CONFORMANCE_ROOT = "{sibling:bennett-conformance}"
 BENNETT_ARITH_ROOT = "{sibling:bennett-arith}"
 
 [[check]]
+name = "runtimes fast suite"
+argv = ["scripts/gate", "--fast"]
+
+[[check]]
 name = "runtimes gate"
+tier = "post-merge"  # heavy: runs on main-health's cadence, not per push
 argv = ["scripts/gate", "--all"]
 
 [[check]]
@@ -23,3 +32,7 @@ note = "conformance main on origin"
 [siblings."bennett-arith"]
 sha = "aab308f8305e92d4946d1ea302af1ea196a27bb3"
 note = "arith main on origin"
+
+[siblings."bennett-isa-spec"]
+sha = "618b16f805aa26244dd2cfa74938d1394a21ce57"
+note = "published ISA 0.9 K91 per-role loader capability negotiation"

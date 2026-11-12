@@ -13,7 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from common import run, llvm_dir, write_layout
 ROOT=Path(__file__).resolve().parents[1]
 TMP=Path(os.environ['TMPDIR'])/'julia-allocation'; TMP.mkdir(parents=True,exist_ok=True)
-julia=Path(os.environ.get('BENNETT_JULIA','/home/tobias/.julia/juliaup/julia-1.13.3+0.x64.linux.gnu/bin/julia'))
+julia=Path(os.environ.get('BENNETT_JULIA',str(Path.home()/'.julia/juliaup/julia-1.13.3+0.x64.linux.gnu/bin/julia')))
 llvm=llvm_dir(23)
 from functools import partial
 run = partial(run, timeout=60)

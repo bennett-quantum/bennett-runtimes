@@ -47,6 +47,19 @@ no coverage threshold.
 
 ## Test oracles and bounds
 
+`test_native.py` checks the native-comparison layout's LP64 size (24), alignment
+(8) and field offsets (0/8/16), and verifies that the native startup/support and
+runtime publications export no launch/sched provider symbols. Statically requiring
+either K91 query or its role's additive entry points fails explicitly at link
+time, naming the missing symbol (ISA 0.9 §10.1, §15 G/H group 3). These are
+negative compatibility checks, not a token-alias support claim. The pinned
+618b16f clause assigns negotiation to the driver's real per-root shim; this
+runtime currently has only host-process startup and a native-comparison heap
+layout. Root/object/closure, live-token identity/lifetime and provider/reader
+transport across a mixed launch remain blocked under brt-1rb / bennett-4ht;
+the query contract does not publish that mixed-container ABI. No native layout
+revision or ISA header substitutes for `token_aliases/1` negotiation.
+
 `test_host_libc.py` builds the same C program against host glibc and the runtime's
 musl publication, then compares exit status, stdout and stderr exactly. It covers
 nine allocator size boundaries, calloc zero fill, alignment and realloc's live
@@ -236,14 +249,16 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "scripts/native-check.cpp": {
-      "complexity_mass": 132,
-      "functions": 1,
+      "complexity_mass": 197,
+      "functions": 19,
       "lengths": {
-        "101-300": 1
+        "1-20": 11,
+        "21-50": 7,
+        "51-100": 1
       },
-      "max_lines": 156,
-      "over_100": 1,
-      "over_20": 1,
+      "max_lines": 68,
+      "over_100": 0,
+      "over_20": 8,
       "over_300": 0,
       "over_50": 1,
       "trivial_wrappers": 0
@@ -468,10 +483,10 @@ The baseline records zero tracked litter and zero production process identifiers
       "trivial_wrappers": 0
     },
     "src/native/heap.c": {
-      "complexity_mass": 86,
-      "functions": 16,
+      "complexity_mass": 89,
+      "functions": 19,
       "lengths": {
-        "1-20": 13,
+        "1-20": 16,
         "21-50": 3
       },
       "max_lines": 32,
@@ -479,7 +494,7 @@ The baseline records zero tracked litter and zero production process identifiers
       "over_20": 3,
       "over_300": 0,
       "over_50": 0,
-      "trivial_wrappers": 1
+      "trivial_wrappers": 2
     },
     "src/native/layout.h": {
       "complexity_mass": 0,
